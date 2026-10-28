@@ -1,0 +1,2 @@
+# Store text files with LF endings so Windows checkouts don't trip ruff or pre-commit.
+* text=auto eol=lf
