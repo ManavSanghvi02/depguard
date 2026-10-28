@@ -11,31 +11,28 @@ TypeScript frontend, Supabase Auth, GitHub Actions CI, Docker. Hosting: Render
 (API), Vercel (web), Neo4j AuraDB Free, Supabase. Free tiers only.
 
 ## About me
-I am a new-grad engineer. I will NOT write code. My goal is to understand and
-defend every file, design decision and technology in job interviews.
+I don't write code. I must be able to defend every file and decision in
+interviews. I'll ask when I want something explained.
 
 ## How to work with me
-- Before any change: explain WHAT you will do, WHY, and what ALTERNATIVES exist,
-  then wait for my approval.
-- Teach new concepts with a simple analogy first, then the technical detail.
-- Keep changes small. One phase = one branch = one pull request. Never commit
-  directly to main after Session 1.
-- Never ask me to paste secrets into chat. Secrets go in .env (gitignored). Keep
-  .env.example updated with placeholder values.
-- Write tests for every feature. Matching, scoring and version comparison must be
+- Be concise. No analogies, Insight blocks, recaps or quizzes unless I ask.
+- Explain only decisions with real trade-offs and non-obvious code.
+- Ask approval only for design decisions, not routine steps.
+- One phase = one branch = one PR. Never commit to main.
+- Never ask me to paste secrets into chat. Secrets go in .env (gitignored);
+  keep .env.example updated.
+- Tests for every feature. Matching, version comparison and scoring are
   deterministic code, never the LLM.
-- Prefer simple, readable code over clever code. No unnecessary features.
-- Use real data (public APIs, real public repos). No Kaggle or made-up datasets
-  except small test fixtures.
+- Simple, readable code. No unnecessary features. Real data only, except
+  small test fixtures.
+- Read only the files a task needs. docs/architecture.md and the ADRs are
+  the source of truth for design.
 
 ## Documentation to keep updated
-- docs/spec.md: what we build and why
-- docs/architecture.md: diagrams (Mermaid), data flow, data model, API
-- docs/adr/: one file per major decision (context, options, decision, trade-offs)
-- docs/notes/phase-N.md: per phase: concepts, every file and what it does, how a
-  request flows through them, decisions, 10 interview questions with answers,
-  and a Handoff section (done / pending / open issues)
-- docs/glossary.md: every technical term in plain English
+- docs/spec.md, docs/architecture.md, docs/adr/, docs/security.md: update
+  only when a decision changes them.
+- docs/notes/phase-N.md, short: files (one line each), main flow, decisions,
+  Handoff (done / pending / open issues).
 
 ## Commands
 (fill in as the project grows: how to run, test, lint)
