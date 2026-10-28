@@ -34,8 +34,12 @@
 - Skeleton, compose, Makefile, pre-commit, CI, Dependabot, format hook.
 - Verified locally: `make setup`, `make lint`, `make test`; hook reformats a live edit.
 
+- `make db-up`: both containers healthy. Fixed: the Neo4j image turns any `NEO4J_*` variable into a config
+  setting, so the healthcheck password is passed as `HEALTHCHECK_PASSWORD`.
+- This machine already runs Windows PostgreSQL 14 on 5432, so its `.env` uses `POSTGRES_PORT=5433`
+  (and port 5433 in `DATABASE_URL`).
+
 ### Pending
-- [ ] Open Docker Desktop and run `make db-up`; check http://localhost:7474 accepts the `.env` password.
 - [ ] Fill the real secret values in `.env` when each integration is built.
 
 ### Open issues

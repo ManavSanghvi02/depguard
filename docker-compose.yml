@@ -23,14 +23,15 @@ services:
     environment:
       # Community edition's admin user is always "neo4j". Password: at least 8 characters.
       NEO4J_AUTH: neo4j/${NEO4J_PASSWORD:?set it in .env}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD:?set it in .env}
+      # For the healthcheck only. Not named NEO4J_*: the image turns those into config settings.
+      HEALTHCHECK_PASSWORD: ${NEO4J_PASSWORD:?set it in .env}
     ports:
       - "127.0.0.1:${NEO4J_HTTP_PORT:-7474}:7474"
       - "127.0.0.1:${NEO4J_BOLT_PORT:-7687}:7687"
     volumes:
       - neo4j-data:/data
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$NEO4J_PASSWORD\" 'RETURN 1'"]
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p \"$$HEALTHCHECK_PASSWORD\" 'RETURN 1'"]
       interval: 10s
       timeout: 10s
       retries: 12
