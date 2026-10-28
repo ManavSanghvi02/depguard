@@ -35,4 +35,10 @@ interviews. I'll ask when I want something explained.
   Handoff (done / pending / open issues).
 
 ## Commands
-(fill in as the project grows: how to run, test, lint)
+Run from the repo root. One-time: `winget install ezwinports.make`, `copy .env.example .env`, `make setup`.
+- `make dev`: API with auto-reload at http://localhost:8000 (`/health`, `/docs`)
+- `make db-up` / `make db-down`: local Postgres + Neo4j (open Docker Desktop first)
+- `make test`: pytest
+- `make lint`: ruff check, ruff format --check, mypy (same as CI)
+- `make format`: auto-fix lint and formatting
+- Python dependencies: `uv add <pkg>` (or `uv add --dev <pkg>`) inside `apps/api`; commit `uv.lock`.

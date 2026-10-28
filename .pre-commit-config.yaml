@@ -1,0 +1,31 @@
+# Runs on every commit. Ruff and mypy run through uv so they use the exact versions in apps/api/uv.lock.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: 3e8a8703264a2f4a69428a0aa4dcb512790b2c8c # v6.0.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-yaml
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --directory apps/api ruff check --fix
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --directory apps/api ruff format
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
+      - id: mypy
+        name: mypy
+        entry: uv run --directory apps/api mypy
+        language: system
+        files: ^apps/api/.*\.py$
+        pass_filenames: false
