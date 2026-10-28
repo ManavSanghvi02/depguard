@@ -9,7 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-API_DIR = Path(__file__).resolve().parents[2] / "apps" / "api"
+REPO_ROOT = Path(__file__).resolve().parents[2]
+API_DIR = REPO_ROOT / "apps" / "api"
 
 
 def main() -> None:
@@ -20,6 +21,9 @@ def main() -> None:
         return
 
     if file_path.suffix != ".py" or not file_path.is_file():
+        return
+    # Only this repo's files: never reformat code outside the project.
+    if not file_path.resolve().is_relative_to(REPO_ROOT):
         return
 
     try:
