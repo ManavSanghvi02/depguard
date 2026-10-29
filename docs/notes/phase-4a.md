@@ -67,9 +67,10 @@ allowed; the check validates the schema, runs the fact checker, and sends the pr
 - ADR-0013 Accepted (provider table, fallback rule, budget); security.md §3 T2, §4, §11, §12 updated.
 
 ### Pending
-- [ ] The Gemini fallback has only been tested with a fake model; the real runs never needed it.
-- [ ] Confirm Gemini's free limits in AI Studio, and Groq's free-plan figures on the console limits page.
-- [ ] Phase 4b: agent evaluation set (faithfulness = 0 unverified facts on every run).
+- [x] The Gemini fallback has only been tested with a fake model; the real runs never needed it. (Phase 4b: real runs.)
+- [ ] Confirm Gemini's free limits in AI Studio, and Groq's free-plan figures on the console limits page. (Phase 4b
+  found Gemini's free limit: 20 requests a day per model; the pages still need reading.)
+- [x] Phase 4b: agent evaluation set (faithfulness = 0 unverified facts on every run).
 
 ### Open issues
 - Explanations run after the scan reports `done`, so for up to a few minutes `explanation` is null ("not yet").

@@ -59,7 +59,7 @@ data-use terms we can accept. Checked on 2026-10-28 in the providers' docs:
 | Provider | Model | Free limits | Data use | Role |
 |---|---|---|---|---|
 | **Groq** | `openai/gpt-oss-120b` (tool use + strict JSON schema) | 30 req/min, 1,000 req/day, 8,000 tokens/min, 200,000 tokens/day | Inference data not retained by default, not used for training | **Primary** |
-| **Gemini** | `gemini-3.8-flash` (newest stable Flash with a free tier) | Shown only in AI Studio; to confirm there | Free-tier content **is used to improve Google's products** | **Fallback, public repos only** |
+| **Gemini** | `GEMINI_MODELS`, in order: `gemini-3.6-flash`, then `gemini-3.8-flash` (Phase 4b; both listed with a free tier on the pricing page, 2026-10-29) | Shown only in AI Studio; to confirm there | Free-tier content **is used to improve Google's products** | **Fallback, public repos only** |
 | OpenRouter `:free` | rotating | 20 req/min, 50 req/day without a $10 purchase | depends on each upstream host | Rejected |
 
 **Rate limits (changed in Phase 4a after the first real run, where 3 of 5 explanations hit Groq's 8,000
@@ -73,16 +73,30 @@ tokens/min):**
 - Explanations of a fresh scan therefore take minutes, not seconds. They run after the scan is `done`, so
   nothing waits for them.
 
-**Fallback rule:** Gemini is tried once only when Groq fails (error, timeout, rate limit that can't be waited
-out), a Gemini key is set,
-**and the repo is public** (`repos.is_private = false`, read from GitHub at each scan). A repo whose visibility is
-unknown counts as private. So the fallback switches off by itself for private repos once they are supported. A
-failed fact check is not an outage and never triggers the fallback. If Groq fails and the fallback isn't allowed,
-the explanation is skipped.
+**Fallback rule:** when Groq fails (error, timeout, rate limit that can't be waited out), a Gemini key is set,
+**and the repo is public** (`repos.is_private = false`, read from GitHub at each scan), the explanation comes from
+the **first available model from the configured list** (`GEMINI_MODELS`, tried in order, each once). A repo whose
+visibility is unknown counts as private. So the fallback switches off by itself for private repos once they are
+supported. A failed fact check is not an outage and never triggers the fallback. If every allowed model fails, or
+the fallback isn't allowed, the explanation is skipped (`unavailable`).
+
+**Why a list with a short timeout (changed in Phase 4b):** the first real fallback run found
+`gemini-3.8-flash` overloaded (503 "high demand", or 504 after the full timeout; one call took 200 s) while
+`gemini-3.5-flash` answered in about a second. Google's model page says `gemini-3.5-flash` is deprecated and
+its requests are routed to `gemini-3.6-flash`, so the list names 3.6 directly. Each Gemini call now has its own short timeout
+(`GEMINI_TIMEOUT_SECONDS`, 20 s; 10 s was tried and was too short, since tool calls took 10–15 s under load),
+so an overloaded model fails fast and the next one is tried, instead of holding the explanation until the
+deadline. The order is a setting, so it can follow whichever free model is healthy without a code change.
+
+**Gemini's free daily limit is small:** the Phase 4b run hit `GenerateRequestsPerDayPerProjectPerModel-FreeTier`,
+**20 requests a day per model** (which also confirms these models are on the free tier). An explanation takes 2–5
+calls, so each listed model covers about 4–10 fallback explanations a day. That is acceptable for a fallback that
+only runs while Groq is failing; a longer Groq outage leaves the rest `unavailable`.
 
 **Budget:** Groq's 8,000 tokens/min binds first: about 1 uncached explanation per minute and about 25 per day
 (about 5 fresh scans). The cache and the top-5 limit keep normal use inside it. Models are settings, so switching
-doesn't change the graph.
+doesn't change the graph. The eval run (Phase 4b, [evals.md](../evals.md)) uses the same pacing, spends about
+85,000 tokens per full run, and refuses to start if its cases could exceed 120,000 tokens, so it fits once a day.
 
 ## Trade-offs
 - **Gain:** a visible, testable flow; a retry loop; tracing; an easy provider switch; no private-repo data

@@ -40,8 +40,13 @@ class Settings(BaseSettings):
     groq_tokens_per_minute: int = 7_500  # the free limit is 8,000; kept below it on purpose
     # Fallback for public repos only: Gemini's free tier uses prompts to improve Google's products.
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.8-flash"
-    llm_timeout_seconds: float = 20  # one LLM call
+    # Tried in order, comma-separated: the first that answers in time explains the finding.
+    # gemini-3.5-flash is deprecated and routed to 3.6 by Google, so 3.6 is named directly.
+    gemini_models: str = "gemini-3.6-flash,gemini-3.8-flash"
+    # Short, so an overloaded model fails fast and the next one (or "unavailable") follows.
+    # 10 s was too short in the Phase 4b run: tool calls took 10-15 s under load.
+    gemini_timeout_seconds: float = 20  # one Gemini call
+    llm_timeout_seconds: float = 20  # one Groq call
     explanation_deadline_seconds: float = 90  # one finding, all calls and the retry
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""

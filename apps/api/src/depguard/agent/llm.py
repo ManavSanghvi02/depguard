@@ -1,5 +1,6 @@
-"""The LLM providers (ADR-0013): Groq first, Gemini as a fallback for public repos only, and
-Langfuse tracing when its keys are set. Models are settings; switching doesn't change the graph."""
+"""The LLM providers (ADR-0013): Groq first, then the configured Gemini models in order as
+fallbacks for public repos only, and Langfuse tracing when its keys are set. Models are settings;
+switching doesn't change the graph."""
 
 import asyncio
 from dataclasses import dataclass
@@ -27,7 +28,8 @@ class Provider:
 @dataclass(frozen=True)
 class Llm:
     primary: Provider | None
-    fallback: Provider | None  # only for public repos: Gemini's free tier trains on prompts
+    # Tried in order, only for public repos: Gemini's free tier trains on prompts.
+    fallbacks: tuple[Provider, ...] = ()
     langfuse_public_key: str | None = None
 
     def tracer(self) -> CallbackHandler | None:
@@ -59,26 +61,34 @@ def make_llm(settings: Settings) -> Llm:
             ),
             shared_budget(settings.groq_model, settings.groq_tokens_per_minute),
         )
-    fallback = None
+    fallbacks = []
     if settings.gemini_api_key:
-        fallback = Provider(
-            "gemini",
-            settings.gemini_model,
-            ChatGoogleGenerativeAI(
-                model=settings.gemini_model,
-                google_api_key=SecretStr(settings.gemini_api_key),
-                timeout=settings.llm_timeout_seconds,
-                max_retries=0,
-                temperature=0,
-            ),
-        )
+        for model in gemini_models(settings.gemini_models):
+            fallbacks.append(
+                Provider(
+                    "gemini",
+                    model,
+                    ChatGoogleGenerativeAI(
+                        model=model,
+                        google_api_key=SecretStr(settings.gemini_api_key),
+                        timeout=settings.gemini_timeout_seconds,
+                        max_retries=0,
+                        temperature=0,
+                    ),
+                )
+            )
     public_key = None
     if settings.langfuse_public_key and settings.langfuse_secret_key:
         langfuse_client(
             settings.langfuse_public_key, settings.langfuse_secret_key, settings.langfuse_host
         )
         public_key = settings.langfuse_public_key
-    return Llm(primary, fallback, public_key)
+    return Llm(primary, tuple(fallbacks), public_key)
+
+
+def gemini_models(setting: str) -> list[str]:
+    """ "a, b,,a" -> ["a", "b"]: in order, without blanks or repeats."""
+    return list(dict.fromkeys(name.strip() for name in setting.split(",") if name.strip()))
 
 
 @lru_cache

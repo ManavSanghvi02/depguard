@@ -33,13 +33,18 @@ class Outcome:
     model: str | None = None
     trace_id: str | None = None
     error: str | None = None
+    # Not stored; the evals report them (docs/evals.md).
+    tokens: int = 0
+    attempts: int = 0
+    rejected: tuple[str, ...] = ()
 
 
 def allowed_providers(llm: Llm, context: FindingContext) -> list[Provider]:
-    """Groq, then Gemini only for a repo known to be public (ADR-0013, security.md §11)."""
+    """Groq, then the Gemini models in order, only for a repo known to be public (ADR-0013,
+    security.md §11)."""
     providers = [llm.primary] if llm.primary else []
-    if llm.fallback and context.repo_private is False:
-        providers.append(llm.fallback)
+    if context.repo_private is False:
+        providers.extend(llm.fallbacks)
     return providers
 
 
@@ -57,16 +62,17 @@ async def explain(context: FindingContext, llm: Llm, deadline_seconds: float) ->
                     provider.model, context, [tracer] if tracer else [], provider.budget, deadline
                 )
         except Exception as error:  # outage, timeout or rate limit: try the next allowed provider
-            logger.warning("explanation with %s failed: %r", provider.name, error)
-            errors.append(f"{provider.name}: {type(error).__name__}")
+            logger.warning("explanation with %s failed: %r", provider.model_name, error)
+            errors.append(f"{provider.model_name}: {type(error).__name__}")
             continue
         trace_id = tracer.last_trace_id if tracer else None
+        usage = (result.tokens, result.attempts, result.rejected)
         if result.draft is None:
             # A failed fact check isn't an outage, so the fallback isn't tried.
             problems = "; ".join(result.problems)[:1_000]
-            return Outcome("unavailable", None, provider.model_name, trace_id, problems)
-        return Outcome("ok", result.draft.text(), provider.model_name, trace_id)
-    if llm.fallback and context.repo_private is not False:
+            return Outcome("unavailable", None, provider.model_name, trace_id, problems, *usage)
+        return Outcome("ok", result.draft.text(), provider.model_name, trace_id, None, *usage)
+    if llm.fallbacks and context.repo_private is not False:
         errors.append("fallback not allowed: repo is not known to be public")
     return Outcome("unavailable", error="; ".join(errors))
 

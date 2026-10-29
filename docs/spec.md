@@ -207,8 +207,8 @@ because they often run code at **install** time, which harms developer machines 
 | 10 min/week (proxy) | Timed walkthrough: sign in → add repo → scan → read top 5 → open fix PR | Under 10 minutes | Manual timing on a benchmark repo. **This is a proxy**, not a user study. |
 | Speed | Scan of a repo with ≤ 5,000 dependencies, **excluding cold start** | Under 2 minutes | Timer in scan logs; cold start reported separately |
 | Fix PR quality | Manifest change touches only the target package (or its parent for transitive fixes); lockfile changes stay within that package's subtree; no unrelated package changes version; major bumps labelled | 100% | Tests on generated diffs |
-| AI faithfulness | Unverified IDs, versions or numbers in explanations | 0 on every run | Automated check against stored data |
-| AI faithfulness | Free-text claims judged correct | Reported as a % | Manual review of an evaluation set |
+| AI faithfulness | Unverified IDs, versions or numbers in explanations | 0 on every run | Automated check against stored data, and on every eval run ([evals.md](evals.md)) |
+| AI faithfulness | Free-text claims backed by the advisory | Reported as a % | Deterministic claim rules over the eval set; unbacked claims listed for review ([evals.md](evals.md)) |
 | Noise reduction | Unique findings (GHSA / PYSEC / CVE aliases merged) vs. findings in "fix now", compared with a severity-only ranking | Reported per benchmark repo | Script over the benchmark repos |
 | MCP parity | MCP answers equal web API answers for the same scan | 100% | Automated test |
 | Freshness | Age of KEV and EPSS data | Under 48 hours | Timestamp shown in UI and API |
@@ -333,10 +333,10 @@ One phase = one branch = one pull request.
 | 2 | Graph: Neo4j dependency graph, paths, capacity check |
 | 3 | Vulnerabilities and scoring: OSV matching, versions, KEV/EPSS, tiers, OSV-Scanner comparison script |
 | 4a | Agent: explanations of the top 5, fact checker |
-| 4b | Evals: agent evaluation set, OSV-Scanner comparison run on all benchmark repos with the documented list of differences |
+| 4b | Evals: agent evaluation set (golden set, faithfulness and claim checks, prompt injection, real Gemini fallback, manual workflow) |
 | 5 | Fix PRs and MCP server |
 | 6 | Web app and auth |
-| 7 | Deploy |
+| 7 | Deploy, and results measurement: OSV-Scanner comparison run on all benchmark repos with the documented list of differences |
 
 ---
 

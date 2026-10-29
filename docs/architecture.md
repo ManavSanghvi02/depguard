@@ -257,7 +257,7 @@ Every row was decided with two options compared; the reasoning is in the ADR.
 | 10 | Where are fix PRs built? | GitHub Actions, two isolated jobs | [0010](adr/0010-fix-prs-built-in-github-actions.md) |
 | 11 | How is MCP served and secured? | Mounted in the API, per-user tokens | [0011](adr/0011-mcp-in-api-with-user-tokens.md) |
 | 12 | How are repos read? | Tree API + blobs with a read-only token | [0012](adr/0012-fetch-lockfiles-via-tree-api.md) |
-| 13 | How are explanations generated? | LangGraph agent; Groq, Gemini fallback for public repos only | [0013](adr/0013-explanation-agent-and-llm.md) |
+| 13 | How are explanations generated? | LangGraph agent; Groq, then the first available Gemini model from a configured list, public repos only | [0013](adr/0013-explanation-agent-and-llm.md) |
 | 14 | Which language and frameworks? | Python + FastAPI; Next.js + TypeScript | [0014](adr/0014-language-and-framework.md) |
 | 15 | Which ecosystems? | npm and PyPI only | [0015](adr/0015-npm-and-pypi-scope.md) |
 
