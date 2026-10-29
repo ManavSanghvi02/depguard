@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from packaging.markers import InvalidMarker, Marker, UndefinedComparison, UndefinedEnvironmentName
-from packaging.specifiers import InvalidSpecifier, SpecifierSet
-from packaging.version import InvalidVersion, Version
+from poetry.core.constraints.version import Version as PoetryVersion
+from poetry.core.constraints.version import parse_constraint
 
 # Old Pythons too: a lock can hold a version kept only for them, and dropping it would hide it.
 TEST_PYTHONS = ["2.7"] + [f"3.{minor}" for minor in range(6, 15)]
@@ -84,15 +84,13 @@ def narrow(candidates: list[Locked], keep: Callable[[Locked], bool]) -> list[Loc
 
 
 def allows(spec: str, version: str) -> bool:
-    """Does a PEP 440 constraint allow this version? True if we can't tell (Poetry's ^1.2)."""
-    spec = spec.strip()
-    if spec in ("", "*"):
+    """Does a Poetry constraint (^1.2, ~1.2, >=1,<2, 1.2 || 2.0, a bare version) allow this
+    version? True if we can't tell, so an unreadable constraint never drops an edge."""
+    if spec.strip() in ("", "*"):
         return True
     try:
-        if spec[0] not in "<>=!~":
-            spec = f"=={spec}"  # Poetry writes a bare version for an exact pin
-        return SpecifierSet(spec).contains(Version(version), prereleases=True)
-    except (InvalidSpecifier, InvalidVersion):
+        return parse_constraint(spec).allows(PoetryVersion.parse(version))
+    except ValueError:  # ParseConstraintError and InvalidVersionError are ValueErrors
         return True
 
 

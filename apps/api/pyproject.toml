@@ -4,11 +4,17 @@ version = "0.1.0"
 description = "Finds and ranks vulnerable npm and PyPI dependencies in GitHub repos."
 requires-python = ">=3.12"
 dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "cvss>=3.6",
     "fastapi>=0.162.0",
     "httpx>=0.28.1",
     "neo4j>=6.4.1",
     "packaging>=26.3",
+    "poetry-core>=2.5.0",
     "pydantic-settings>=2.16.1",
+    "semver>=3.1.0",
+    "sqlalchemy[asyncio]>=2.1.6",
     "uvicorn>=0.54.0",
 ]
 
@@ -27,16 +33,27 @@ target-version = "py312"
 # E/F: errors, I: import order, B: likely bugs, UP: modern syntax, S: security checks
 select = ["E", "F", "I", "B", "UP", "S"]
 
+[tool.ruff.lint.isort]
+# The apps/api/alembic folder holds migrations; the import is the alembic library.
+known-third-party = ["alembic"]
+
 [tool.ruff.lint.per-file-ignores]
 # assert is how pytest checks results; tests use fake tokens such as "test"
 "tests/**" = ["S101", "S105", "S106", "S107"]
 
 [tool.mypy]
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
+
+[[tool.mypy.overrides]]
+# These libraries ship no type information.
+module = ["cvss", "asyncpg"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Shared test helpers (fake_osv.py) live in tests/; scripts/ holds the comparison script.
+pythonpath = ["tests", "scripts"]
 
 [dependency-groups]
 dev = [

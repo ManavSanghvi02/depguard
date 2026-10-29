@@ -19,8 +19,10 @@ class FakeGitHub:
         private: bool = False,
         truncated: bool = False,
         sizes: dict[str, int] | None = None,
+        repo: str = "o/r",
     ) -> None:
         self.files = files
+        self.repo = f"/repos/{repo}"
         self.private = private
         self.truncated = truncated
         self.sizes = sizes or {}
@@ -30,11 +32,11 @@ class FakeGitHub:
     def handler(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
         self.requests.append(path)
-        if path == "/repos/o/r":
+        if path == self.repo:
             return httpx.Response(200, json={"private": self.private, "default_branch": "main"})
-        if path == "/repos/o/r/commits/main":
+        if path == f"{self.repo}/commits/main":
             return httpx.Response(200, text=COMMIT)
-        if path == f"/repos/o/r/git/trees/{COMMIT}":
+        if path == f"{self.repo}/git/trees/{COMMIT}":
             tree = [
                 {
                     "path": p,
@@ -45,7 +47,7 @@ class FakeGitHub:
                 for p, c in self.files.items()
             ]
             return httpx.Response(200, text=json.dumps({"tree": tree, "truncated": self.truncated}))
-        if path.startswith("/repos/o/r/git/blobs/"):
+        if path.startswith(f"{self.repo}/git/blobs/"):
             return httpx.Response(200, content=self.blobs[path.rsplit("/", 1)[1]])
         return httpx.Response(404)
 

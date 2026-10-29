@@ -76,6 +76,13 @@ def test_schema_is_idempotent() -> None:
 
     assert {"service_id", "dep_key"} <= with_driver(test)
 
+    async def indexes(driver: AsyncDriver) -> set[str]:
+        records, _, _ = await driver.execute_query("SHOW INDEXES YIELD name RETURN name")
+        return {record["name"] for record in records}
+
+    names = with_driver(indexes)
+    assert "dep_package_norm" in names and "dep_package" not in names
+
 
 def test_real_lockfiles_round_trip(repo: str) -> None:
     services = real_services()
@@ -195,6 +202,21 @@ def test_services_containing_only_searches_the_given_services(repo: str) -> None
         both = await services_containing(driver, "PyPI", "Django.Filter", "24.3", [mine, other])
         assert both == sorted([mine, other])
         assert await services_containing(driver, "PyPI", "django-filter", "1.0", [mine]) == []
+
+    with_driver(test)
+
+
+def test_services_containing_matches_equal_versions(repo: str) -> None:
+    service_id = new_id()
+    service = parse_requirements_txt(b"requests==2.0.0\n", "requirements.txt")
+
+    async def test(driver: AsyncDriver) -> None:
+        await write_service(driver, service_id, repo, service, ROOMY)
+        assert await services_containing(driver, "PyPI", "requests", "2.0", [service_id]) == [
+            service_id
+        ]
+        tree = await service_tree(driver, service_id)
+        assert tree is not None and tree.entries[0].version == "2.0.0"  # shown as the lock says
 
     with_driver(test)
 
