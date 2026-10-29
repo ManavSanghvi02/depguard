@@ -64,7 +64,8 @@ followed injection.
   limited to `main`, and yourself as required reviewer (otherwise anyone with write access could run a changed
   `evals.yml` from another branch and read the keys). Then run the workflow once with 3 cases.
 - [ ] Expect GitHub dependency alerts for `evals/lockfiles/event-stream` (it names the malicious flatmap-stream on purpose).
-- [ ] Read the Groq and AI Studio limit pages and record the figures in ADR-0013 and spec §8.1.
+- [x] Groq limits read on the console (free plan): 30 RPM, 1K RPD, 8K TPM, 200K TPD for gpt-oss-120b; in spec §8.1.
+- [ ] AI Studio: read the text-model rows for Gemini 3.6 Flash and 3.8 Flash, and check the project's tier.
 - [ ] `.env`: `GEMINI_MODEL` is no longer read; the default list is used (set `GEMINI_MODELS` to change it).
 
 ### Open issues

@@ -58,7 +58,7 @@ data-use terms we can accept. Checked on 2026-10-28 in the providers' docs:
 
 | Provider | Model | Free limits | Data use | Role |
 |---|---|---|---|---|
-| **Groq** | `openai/gpt-oss-120b` (tool use + strict JSON schema) | 30 req/min, 1,000 req/day, 8,000 tokens/min, 200,000 tokens/day | Inference data not retained by default, not used for training | **Primary** |
+| **Groq** | `openai/gpt-oss-120b` (tool use + strict JSON schema) | 30 req/min, 1,000 req/day, 8,000 tokens/min, 200,000 tokens/day (confirmed on the console's organization limits page, free plan, 2026-10-29) | Inference data not retained by default, not used for training | **Primary** |
 | **Gemini** | `GEMINI_MODELS`, in order: `gemini-3.6-flash`, then `gemini-3.8-flash` (Phase 4b; both listed with a free tier on the pricing page, 2026-10-29) | Shown only in AI Studio; to confirm there | Free-tier content **is used to improve Google's products** | **Fallback, public repos only** |
 | OpenRouter `:free` | rotating | 20 req/min, 50 req/day without a $10 purchase | depends on each upstream host | Rejected |
 

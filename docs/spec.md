@@ -228,6 +228,8 @@ Figures checked on 2026-10-28; free tiers change often, so re-check before relyi
 | **Supabase Free** | 500 MB database per project; projects pause after 1 week of inactivity. | Store a new score row only when inputs change. The daily job touches Supabase. |
 | **Vercel Hobby** (web) | For non-commercial use. | Fits a portfolio project. |
 | **GitHub Actions** | Scheduled workflows are disabled after 60 days without repo activity in public repos; minutes are limited while a repo is private. | The daily job also has a manual "run now" trigger. |
+| **Groq** (free plan, organization limits; console, 2026-10-29) | `openai/gpt-oss-120b`: 30 requests/min, 1,000 requests/day, 8,000 tokens/min, 200,000 tokens/day | About 1 uncached explanation a minute; one full eval run (about 81,000 tokens) a day ([ADR-0013](adr/0013-explanation-agent-and-llm.md)). |
+| **Gemini** (free tier, per project and model) | `gemini-3.6-flash`: 20 requests/day (from Google's own 429, 2026-10-29); its other limits are still to read in AI Studio | Fallback for public repos only; about 4–10 explanations a day per listed model. |
 
 Sources: [Neo4j Aura quotas and limits](https://neo4j.com/docs/aura/quotas-and-limits/),
 [Neo4j AuraDB Free](https://neo4j.com/free-graph-database/),
