@@ -13,7 +13,7 @@ DepGuard stores two different kinds of data:
 
 **Option A: Postgres only.** Store edges in a table and use recursive queries (`WITH RECURSIVE`).
 - One database, one free tier, one backup story.
-- At DepGuard's scale (≤ 2,000 entries per service) a recursive query would probably be fast enough.
+- At DepGuard's scale (≤ 5,000 entries per service) a recursive query would probably be fast enough.
 - Path queries are long and hard to read, and get more complex as features grow (shortest paths, several paths).
 
 **Option B: Postgres + Neo4j.** Postgres is the source of truth for records; Neo4j holds only the graph.

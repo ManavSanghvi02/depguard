@@ -23,6 +23,8 @@ nodes and relationships (about 200k / 400k under current limits).
 **The math that settles it** (N = entries per service, d = average dependencies per entry, assumed 2–4 until measured):
 - Relationships per service = **N × d in both options**. Sharing nodes doesn't reduce edges.
 - At N = 2,000 under current limits: by nodes ~99 services fit; by relationships ~100 (d = 2) to ~50 (d = 4).
+  *(Updated in phase 2: the cap is now 5,000 and measured `d` is 1.0–2.23, so ~36–39 maximum-size services fit
+  by either limit. The conclusion holds: sharing nodes would save little.)*
   At d ≈ 2 both limits are about equal; above that, **relationships run out first**. Either way option A's node savings
   buy little capacity. (Full table in [spec §8.1](../spec.md).)
 

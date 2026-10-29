@@ -10,7 +10,8 @@ REQUIREMENTS_NAME = re.compile(r"requirements[^/]*\.txt")
 
 def lockfile_type(path: str) -> LockfileType | None:
     """Which parser handles a repo path, or None if it isn't a supported lockfile."""
-    name = PurePosixPath(path).name
+    file = PurePosixPath(path)
+    name = file.name
     if name == "package-lock.json":
         return "package-lock"
     if name == "poetry.lock":
@@ -18,5 +19,8 @@ def lockfile_type(path: str) -> LockfileType | None:
     if name == "uv.lock":
         return "uv-lock"
     if REQUIREMENTS_NAME.fullmatch(name):
+        return "requirements"
+    # A requirements/ folder (e.g. requirements/base.txt), at any depth. .in files aren't pinned.
+    if file.suffix == ".txt" and "requirements" in file.parts[:-1]:
         return "requirements"
     return None

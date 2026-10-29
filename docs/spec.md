@@ -140,7 +140,7 @@ check that becomes a test. **MVP = stories 1–7. Story 8 is next after the MVP.
 
 - **No version guessing.** An unpinned requirement such as `requests>=2.0` is reported
   as **"skipped: version unknown"**, never matched against a guessed version.
-- **Limits:** at most **10 repos per user** and **2,000 dependencies per service**.
+- **Limits:** at most **10 repos per user** and **5,000 dependencies per service**.
 
 ### 5.2 Features
 1. **Sign-in** with GitHub through Supabase Auth, used for **identity only** (no
@@ -205,7 +205,7 @@ because they often run code at **install** time, which harms developer machines 
 | Determinism | Same lockfile + same data snapshot → same findings, tiers, scores and order | 100% | Unit tests |
 | Ranking | Every "fix now" finding ranks above every other finding; tiers always in order | 100% | Automated test |
 | 10 min/week (proxy) | Timed walkthrough: sign in → add repo → scan → read top 5 → open fix PR | Under 10 minutes | Manual timing on a benchmark repo. **This is a proxy**, not a user study. |
-| Speed | Scan of a repo with ≤ 2,000 dependencies, **excluding cold start** | Under 2 minutes | Timer in scan logs; cold start reported separately |
+| Speed | Scan of a repo with ≤ 5,000 dependencies, **excluding cold start** | Under 2 minutes | Timer in scan logs; cold start reported separately |
 | Fix PR quality | Manifest change touches only the target package (or its parent for transitive fixes); lockfile changes stay within that package's subtree; no unrelated package changes version; major bumps labelled | 100% | Tests on generated diffs |
 | AI faithfulness | Unverified IDs, versions or numbers in explanations | 0 on every run | Automated check against stored data |
 | AI faithfulness | Free-text claims judged correct | Reported as a % | Manual review of an evaluation set |
@@ -224,7 +224,7 @@ Figures checked on 2026-10-28; free tiers change often, so re-check before relyi
 | Service | Relevant limits | Consequence for DepGuard |
 |---|---|---|
 | **Render** (API) | Free web services spin down after 15 min idle; spin-up takes about a minute; 750 free instance hours/month. Cron jobs are billed (minimum $1/month). | Cold start is measured separately. The daily job does **not** run on Render. |
-| **Neo4j AuraDB Free** | About 200,000 nodes and 400,000 relationships; pauses after about 3 days without activity; no backups. | The node cap is shared by all users → limits of 10 repos per user and 2,000 deps per service. The daily job writes to Neo4j. |
+| **Neo4j AuraDB Free** | About 200,000 nodes and 400,000 relationships; pauses after about 3 days without activity; no backups. | The node cap is shared by all users → limits of 10 repos per user and 5,000 deps per service. The daily job writes to Neo4j. |
 | **Supabase Free** | 500 MB database per project; projects pause after 1 week of inactivity. | Store a new score row only when inputs change. The daily job touches Supabase. |
 | **Vercel Hobby** (web) | For non-commercial use. | Fits a portfolio project. |
 | **GitHub Actions** | Scheduled workflows are disabled after 60 days without repo activity in public repos; minutes are limited while a repo is private. | The daily job also has a manual "run now" trigger. |
@@ -245,21 +245,26 @@ relationships per service  = N × d            (d = average dependencies per ent
 services that fit          ≈ min( node_limit / (N + 1),  relationship_limit / (N × d) )
 ```
 
-`d` is an **assumption (2–4)** until it is measured on the benchmark repos. For a maximum-size service
-(N = 2,000), **under current limits**:
+**Measured `d`** (phase 2, edges ÷ entries, counting the service's own edges to direct dependencies):
+requirements files 1.00 (no edges between entries), uv.lock 1.65, poetry.lock 1.78, npm 1.12–1.90, and
+**2.23 for superset-frontend** (3,037 entries, the largest real service seen). So `d` is about 2, at the low
+end of the 2–4 assumed in Phase 0, and large npm services are the worst case. For a maximum-size service
+(N = 5,000; the cap was raised from 2,000 in phase 2 so real frontends such as superset-frontend fit), **under
+current limits**:
 
-| Published limits | By nodes | By relationships (d = 2 … 4) | Services that fit |
+| Published limits | By nodes | By relationships (d = 2.23) | Services that fit |
 |---|---|---|---|
-| 200,000 nodes / 400,000 relationships (current docs) | ~99 | ~100 … ~50 | **~50–99** |
-| 50,000 nodes / 175,000 relationships (older Neo4j pages) | ~24 | ~43 … ~21 | **~21–24** |
+| 200,000 nodes / 400,000 relationships (current docs) | ~39 | ~36 | **~36** (~32 under the 90% stop) |
+| 50,000 nodes / 175,000 relationships (older Neo4j pages) | ~9 | ~15 | **~9** |
 
-At d ≈ 2, nodes and relationships run out at about the same point; for higher `d`, relationships run out first.
+At d ≈ 2, nodes and relationships run out at about the same point; large npm services tip it slightly
+towards relationships.
 
 Neo4j has published different free-tier limits over time; the real numbers will be confirmed in the Aura
 console and this table updated. Either way, at the maximum of 10 repos per user, DepGuard on the free tier serves
-**a handful of users**, which is acceptable for a portfolio project. Typical services are far smaller than 2,000
-entries, so real capacity is higher. Before writing a graph, DepGuard checks that current + new stays under 90% of
-both limits; otherwise the graph step is skipped, findings are still stored, and the scan is marked `partial`.
+**a handful of users**, which is acceptable for a portfolio project. Typical services are far smaller than 5,000
+entries (the benchmark fixtures have 67–318), so real capacity is much higher. Before writing a graph, DepGuard
+checks that current − the service's old graph + new stays under 90% of both limits; otherwise the graph step is skipped, findings are still stored, and the scan is marked `partial`.
 
 ### 8.2 The daily job
 A scheduled GitHub Actions workflow, with a manual "run now" trigger, that:
@@ -314,7 +319,7 @@ commit SHA when the comparison script is built (phase 4b). Checked through the G
 | Textualize/textual | `poetry.lock` + an empty `uv.lock` | Poetry 2.1 groups; empty-file edge case |
 | python-poetry/poetry | `poetry.lock` + 13 test-fixture locks | Test folders are skipped |
 | pydantic/pydantic | 3 `uv.lock` | Large uv lockfiles; several services |
-| apache/superset | 4 npm + 2 `requirements.txt` | Large; one lockfile is over the 2,000-entry limit |
+| apache/superset | 4 npm + 2 `requirements/*.txt` | Large; superset-frontend (3,037 entries) and `requirements/*.txt` services |
 | microsoft/vscode | 55 npm (after skipping test folders) | Very large; hits the 25-lockfile limit |
 | npm/cli | npm v3 workspaces + hundreds of fixture locks | Workspaces; test folders are skipped |
 

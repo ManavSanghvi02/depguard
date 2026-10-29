@@ -29,6 +29,9 @@ class IngestResult(BaseModel):
     services: list[ParsedService]
     failed_services: list[FailedService]
     partial_reasons: list[str]
+    # False if GitHub truncated the tree or the lockfile cap was hit: lockfiles missing from this
+    # result may still exist, so their stored graphs must not be treated as stale.
+    all_lockfiles_seen: bool
 
 
 def select_lockfiles(files: list[TreeFile]) -> list[tuple[TreeFile, LockfileType]]:
@@ -68,6 +71,7 @@ async def ingest_repo(
 
     selected = select_lockfiles(tree.files)
     limit = settings.max_lockfiles_per_repo
+    all_lockfiles_seen = not tree.truncated and len(selected) <= limit
     if len(selected) > limit:
         partial_reasons.append(
             f"{len(selected)} lockfiles found; only the first {limit} were scanned"
@@ -112,4 +116,5 @@ async def ingest_repo(
         services=services,
         failed_services=failed,
         partial_reasons=partial_reasons,
+        all_lockfiles_seen=all_lockfiles_seen,
     )
