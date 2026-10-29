@@ -22,7 +22,7 @@ import sys
 import tomllib
 import uuid
 from collections import defaultdict
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict
 from itertools import islice
 from pathlib import Path
@@ -48,20 +48,28 @@ API_DIR = Path(__file__).parents[1]
 NAMESPACE = uuid.UUID("6f1f6d0e-55d2-4c55-9c38-4b0f8f0a4b5e")
 
 
-def download(downloads: dict[str, dict[str, str]]) -> None:
-    """Fetch each missing large lockfile at its fixed commit; refuse one whose hash differs."""
+def fetch(url: str) -> bytes:
+    response = httpx.get(url, timeout=60, follow_redirects=True)
+    response.raise_for_status()
+    return response.content
+
+
+def download(
+    downloads: dict[str, dict[str, str]],
+    base: Path = API_DIR,
+    get: Callable[[str], bytes] = fetch,
+) -> None:
+    """Fetch each missing large lockfile at its fixed commit. The hash is checked before the
+    file is written, and again on a file already there."""
     for path, source in downloads.items():
-        file = API_DIR / path
-        if not file.exists():
-            response = httpx.get(source["url"], timeout=60, follow_redirects=True)
-            response.raise_for_status()
-            file.parent.mkdir(parents=True, exist_ok=True)
-            file.write_bytes(response.content)
-        digest = hashlib.sha256(file.read_bytes()).hexdigest()
+        file = base / path
+        content = file.read_bytes() if file.exists() else get(source["url"])
+        digest = hashlib.sha256(content).hexdigest()
         if digest != source["sha256"]:
-            raise SystemExit(
-                f"{path}: SHA-256 {digest} differs from cases.toml; delete it and retry"
-            )
+            raise SystemExit(f"{path}: SHA-256 {digest} differs from cases.toml")
+        if not file.exists():
+            file.parent.mkdir(parents=True, exist_ok=True)
+            file.write_bytes(content)
 
 
 def parse(path: str) -> ParsedService:

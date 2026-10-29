@@ -47,7 +47,8 @@ class Settings(BaseSettings):
     # 10 s was too short in the Phase 4b run: tool calls took 10-15 s under load.
     gemini_timeout_seconds: float = 20  # one Gemini call
     llm_timeout_seconds: float = 20  # one Groq call
-    explanation_deadline_seconds: float = 90  # one finding, all calls and the retry
+    # Per provider for one finding (all its calls and the retry); each fallback gets its own.
+    explanation_deadline_seconds: float = 90
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "https://cloud.langfuse.com"

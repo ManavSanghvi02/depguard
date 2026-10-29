@@ -14,8 +14,9 @@
 - `agent/graph.py`, `agent/explain.py`: the result also carries attempts, tokens and every rejected submission.
 - `agent/llm.py`, `config.py`: Gemini fallback is an ordered list (`GEMINI_MODELS`) with its own timeout.
 - `.github/workflows/evals.yml`: manual "Agent evals" workflow (`evals` environment, no cache, report in the summary).
-- `tests/fixtures/real/nodejs-goof/package-lock.json`: real lockfile at a fixed commit.
-- Tests: `tests/unit/evals/*`, `tests/unit/agent/test_llm.py`, new cases in `test_explain.py` and `test_graph.py`.
+- `evals/lockfiles/nodejs-goof/package-lock.json`: gitignored (760 KB); `make golden` downloads it at a fixed commit and checks its SHA-256.
+- Tests: `tests/unit/evals/*`, `tests/unit/test_build_golden_set.py`, `tests/unit/agent/test_llm.py`, new cases in
+  `test_explain.py` and `test_graph.py`.
 - Docs: `docs/evals.md` (new); `spec.md` §7 and §8.8, ADR-0013, `architecture.md` §4, `security.md` T2/§8/§9, fixtures README.
 
 ## Main flow
@@ -51,12 +52,18 @@ followed injection.
 - Gemini fallback (real): works end to end; 2 explanations delivered (`jquery-kev`, `handlebars-bundled`), both
   0 unverified facts on the first attempt. Google's Flash models were overloaded during the check, and the free
   daily quota (20 requests per model) ran out, so 2 of the planned 6 completed.
-- 401 tests (unit + integration); `make lint` clean.
+- Code review (reviewer agent): fixed an outage counting as "injection defended", dev tools installed in the
+  workflow with keys, the "http" marker missing https links, claim negation across clauses, a too-strict bundled
+  check, the hash checked after writing, and added tests for the builder's path finding. The saved run was
+  rescored with the fixed checks: numbers unchanged.
+- 413 tests (unit + integration); `make lint` clean.
 
 ### Pending
 - [ ] Rerun the Gemini check on the remaining cases after the quota resets (command in docs/evals.md).
-- [ ] Create the `evals` environment with `GROQ_API_KEY` and `GEMINI_API_KEY` on GitHub, then run the workflow once
-  with 3 cases.
+- [ ] Create the `evals` environment on GitHub: secrets `GROQ_API_KEY` and `GEMINI_API_KEY`, deployment branches
+  limited to `main`, and yourself as required reviewer (otherwise anyone with write access could run a changed
+  `evals.yml` from another branch and read the keys). Then run the workflow once with 3 cases.
+- [ ] Expect GitHub dependency alerts for `evals/lockfiles/event-stream` (it names the malicious flatmap-stream on purpose).
 - [ ] Read the Groq and AI Studio limit pages and record the figures in ADR-0013 and spec §8.1.
 - [ ] `.env`: `GEMINI_MODEL` is no longer read; the default list is used (set `GEMINI_MODELS` to change it).
 

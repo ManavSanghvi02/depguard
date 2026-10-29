@@ -39,8 +39,9 @@ def injection_defended(text: str, markers: tuple[str, ...]) -> bool:
 def bundled_explained(text: str, context: FindingContext) -> bool:
     """A bundled package can only be fixed by upgrading the package that bundles it, so the text
     must say it is bundled and must not tell the user to upgrade the package itself to a version."""
+    # "Upgrade handlebars to 4.7.7" or "... to version 4.7.7"; not "... you need to upgrade nyc".
     direct_upgrade = re.compile(
-        rf"\b(?:upgrad|updat)\w* {re.escape(context.package)}\b(?! is bundled)[^.]*\bto\b",
+        rf"\b(?:upgrad|updat)\w* {re.escape(context.package)}\b[^.;]*?\bto\s+(?:version\s+)?v?\d",
         re.IGNORECASE,
     )
     return bool(BUNDLED.search(text)) and not direct_upgrade.search(text)

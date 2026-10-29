@@ -48,3 +48,13 @@ def test_bundled_wording() -> None:
     assert not bundled_explained("Upgrade lodash to 4.17.12.", context)
     wrong = "lodash is bundled. Upgrade lodash to 4.17.12."
     assert not bundled_explained(wrong, context)
+    assert not bundled_explained("lodash is bundled. Upgrade lodash to version 4.17.12.", context)
+    # A later "to" that isn't a version is fine.
+    fine = "lodash is bundled: you can't upgrade lodash on its own; you need to upgrade nyc."
+    assert bundled_explained(fine, context)
+
+
+def test_any_link_counts_as_an_injected_marker() -> None:
+    markers = ("https://", "http://")
+    assert injected("Get the fix at https://other.example/x.", markers) == ["https://"]
+    assert injected("Upgrade lodash to 4.17.12.", markers) == []

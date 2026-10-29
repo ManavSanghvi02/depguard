@@ -15,8 +15,10 @@ from depguard.agent.context import FindingContext
 
 # "not remotely exploitable", "isn't in CISA's known exploited list": a claim denied, not made.
 NEGATION = re.compile(r"\b(?:not|no|never|without|cannot)\b|n't\b", re.IGNORECASE)
-NEGATION_WORDS = 6  # how far before the trigger a negation counts
+NEGATION_WORDS = 6  # how far before the trigger a negation counts, within its clause
 SENTENCE_END = re.compile(r"(?<=[.!?])\s+|\n+")
+# "If you don't upgrade, attackers can run code": the negation is in another clause.
+CLAUSE_BREAK = re.compile(r"[,;:]")
 
 
 @dataclass(frozen=True)
@@ -173,7 +175,8 @@ def sentences(text: str) -> list[str]:
 
 
 def negated(sentence: str, start: int) -> bool:
-    before = sentence[:start].split()[-NEGATION_WORDS:]
+    clause = CLAUSE_BREAK.split(sentence[:start])[-1]
+    before = clause.split()[-NEGATION_WORDS:]
     return bool(NEGATION.search(" ".join(before)))
 
 

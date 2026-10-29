@@ -24,6 +24,17 @@ def test_a_denied_claim_is_not_a_claim() -> None:
     assert rules("It isn't known to be exploited in the wild.") == []
 
 
+def test_a_negation_in_another_clause_does_not_cancel_the_claim() -> None:
+    assert rules("If you don't upgrade, attackers can run code remotely.") == [
+        ("remote", False),
+        ("code execution", False),
+    ]
+    assert rules("Without logging in, an attacker can execute code.") == [
+        ("no login needed", False),
+        ("code execution", False),
+    ]
+
+
 def test_no_login_needed_is_a_claim_although_it_starts_with_without() -> None:
     assert rules("Anyone can do it without logging in.") == [("no login needed", False)]
 
