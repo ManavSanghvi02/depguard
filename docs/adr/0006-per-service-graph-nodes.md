@@ -30,7 +30,8 @@ nodes and relationships (about 200k / 400k under current limits).
 **Option B.**
 - npm entries are keyed by their **lockfile install path** (`node_modules/a/node_modules/b`), so even two copies of
   the same package *inside one lockfile* stay distinct.
-- Python entries are keyed by normalised name (one version per environment).
+- Python entries are keyed by `normalised-name==version`. *(Changed in phase 1: `uv.lock` and `poetry.lock` can
+  hold two versions of one package, one per Python version, so the name alone isn't unique.)*
 - Indexes: unique `(service_id, key)`; composite `(ecosystem, name, version)` for "which services contain X?".
 - Only the latest scan's graph is kept per service; writes stop at 90% of either limit (the scan is then `partial`).
 

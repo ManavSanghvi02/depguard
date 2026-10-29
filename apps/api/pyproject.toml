@@ -5,6 +5,9 @@ description = "Finds and ranks vulnerable npm and PyPI dependencies in GitHub re
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.162.0",
+    "httpx>=0.28.1",
+    "packaging>=26.3",
+    "pydantic-settings>=2.16.1",
     "uvicorn>=0.54.0",
 ]
 
@@ -24,8 +27,8 @@ target-version = "py312"
 select = ["E", "F", "I", "B", "UP", "S"]
 
 [tool.ruff.lint.per-file-ignores]
-# assert is how pytest checks results
-"tests/**" = ["S101"]
+# assert is how pytest checks results; tests use fake tokens such as "test"
+"tests/**" = ["S101", "S105", "S106", "S107"]
 
 [tool.mypy]
 strict = true
@@ -36,7 +39,6 @@ testpaths = ["tests"]
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "mypy>=2.4.0",
     "pre-commit>=4.7.0",
     "pytest>=9.2.0",

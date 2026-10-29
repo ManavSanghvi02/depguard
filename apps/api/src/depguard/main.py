@@ -1,6 +1,9 @@
 from fastapi import FastAPI
 
+from depguard.routes import ingest
+
 app = FastAPI(title="DepGuard")
+app.include_router(ingest.router)
 
 
 @app.get("/health")

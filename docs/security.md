@@ -171,7 +171,7 @@ identities (service IDs and package names only) and can be rebuilt from lockfile
 | Authentication | Required on everything except `/health`, `/data-status` and the signature-checked webhook |
 | Rate limit per user (JWT) and per API token (MCP) | e.g. 60 requests/minute; `429 Too Many Requests` when exceeded |
 | Scans | One running scan per repo; at most 20 scans per user per day |
-| Repos / size | 10 repos per user; 2,000 entries per service; lockfile size cap |
+| Repos / size | 10 repos per user; 25 lockfiles per repo; 10 MB per lockfile; 2,000 entries per service |
 | Fix PRs | At most 10 fix requests per user per day; one open fix per finding |
 | LLM | Top 5 findings per scan only; retries capped |
 | MCP tokens | At most 5 active tokens per user |

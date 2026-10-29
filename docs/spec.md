@@ -300,6 +300,39 @@ A scheduled GitHub Actions workflow, with a manual "run now" trigger, that:
 - About **10–12 days** total, solo. Claude writes the code; the owner must be able to
   explain every file, which rules out clever but obscure solutions.
 
+### 8.7 Benchmark repos
+Real public repos used for the OSV-Scanner comparison and the noise-reduction metric (§7). Each is pinned to a
+commit SHA when the comparison script is built (phase 4b). Checked through the GitHub API on 2026-10-28.
+
+| Repo | Lockfiles | Why it's in the set |
+|---|---|---|
+| OWASP/NodeGoat | 1 npm v2 | Deliberately vulnerable; many findings |
+| snyk-labs/nodejs-goof | 1 npm v2 | Deliberately vulnerable |
+| adeyosemanputra/pygoat | ~25 small `requirements.txt` | Deliberately vulnerable Python; many services |
+| DefectDojo/django-DefectDojo | 3 `requirements*.txt` + 1 npm v3 | Mixed ecosystems; unpinned lines |
+| fastapi/full-stack-fastapi-template | `uv.lock` | Small, typical app |
+| Textualize/textual | `poetry.lock` + an empty `uv.lock` | Poetry 2.1 groups; empty-file edge case |
+| python-poetry/poetry | `poetry.lock` + 13 test-fixture locks | Test folders are skipped |
+| pydantic/pydantic | 3 `uv.lock` | Large uv lockfiles; several services |
+| apache/superset | 4 npm + 2 `requirements.txt` | Large; one lockfile is over the 2,000-entry limit |
+| microsoft/vscode | 55 npm (after skipping test folders) | Very large; hits the 25-lockfile limit |
+| npm/cli | npm v3 workspaces + hundreds of fixture locks | Workspaces; test folders are skipped |
+
+### 8.8 Phase plan
+One phase = one branch = one pull request.
+
+| Phase | Scope |
+|---|---|
+| 0b | Skeleton: API app, local databases, CI |
+| 1 | Ingestion: fetch lockfiles from GitHub, parsers |
+| 2 | Graph: Neo4j dependency graph, paths, capacity check |
+| 3 | Vulnerabilities and scoring: OSV matching, versions, KEV/EPSS, tiers |
+| 4a | Agent: explanations of the top 5, fact checker |
+| 4b | Evals: agent evaluation set, OSV-Scanner comparison on the benchmark repos |
+| 5 | Fix PRs and MCP server |
+| 6 | Web app and auth |
+| 7 | Deploy |
+
 ---
 
 ## 9. Open questions
