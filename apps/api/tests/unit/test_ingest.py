@@ -36,18 +36,27 @@ def test_selects_supported_lockfiles_outside_dependency_and_test_folders() -> No
         "tests/fixtures/poetry.lock",
         "api/uv.lock",
         "requirements-dev.txt",
-        "requirements/base.txt",  # folder form is not supported
+        "requirements/base.txt",
+        "a/requirements/dev/x.txt",
+        "requirements/base.in",  # not pinned
+        "docs/notes.txt",
         "package.json",
     ]
 
     selected = select_lockfiles([TreeFile(path=p, sha="s", size=1) for p in paths])
 
     assert [(f.path, kind) for f, kind in selected] == [
+        ("a/requirements/dev/x.txt", "requirements"),
         ("api/uv.lock", "uv-lock"),
         ("package-lock.json", "package-lock"),
         ("requirements-dev.txt", "requirements"),
+        ("requirements/base.txt", "requirements"),
         ("web/package-lock.json", "package-lock"),
     ]
+
+
+def test_default_entry_limit_is_5000() -> None:
+    assert Settings.model_construct().max_entries_per_service == 5_000
 
 
 def test_ingests_every_lockfile_as_a_service() -> None:

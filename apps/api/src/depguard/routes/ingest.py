@@ -22,10 +22,14 @@ router = APIRouter(prefix="/v1")
 _cache = ByteCache(max_bytes=32_000_000)
 
 
+# GitHub's naming rules. Both values go into API URLs, so nothing else is allowed.
+OWNER_PATTERN = r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$"
+REPO_PATTERN = r"^[A-Za-z0-9._-]{1,100}$"
+
+
 class IngestRequest(BaseModel):
-    # GitHub's naming rules. Both values go into API URLs, so nothing else is allowed.
-    owner: str = Field(pattern=r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$")
-    repo: str = Field(pattern=r"^[A-Za-z0-9._-]{1,100}$")
+    owner: str = Field(pattern=OWNER_PATTERN)
+    repo: str = Field(pattern=REPO_PATTERN)
 
     @field_validator("repo")
     @classmethod
@@ -56,8 +60,14 @@ async def ingest(
     settings: Annotated[Settings, Depends(require_dev_endpoints)],
     reader: Annotated[GitHubReader, Depends(get_reader)],
 ) -> IngestResult:
+    return await ingest_or_http_error(reader, body.owner, body.repo, settings)
+
+
+async def ingest_or_http_error(
+    reader: GitHubReader, owner: str, repo: str, settings: Settings
+) -> IngestResult:
     try:
-        return await ingest_repo(reader, body.owner, body.repo, settings)
+        return await ingest_repo(reader, owner, repo, settings)
     except RepoNotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
     except RateLimitError as error:

@@ -11,8 +11,12 @@ def load_toml(content: bytes) -> dict[str, Any]:
         raise ParseError(f"invalid TOML: {error}") from error
 
 
-def sorted_edges(edges: set[tuple[str | None, str]]) -> list[Edge]:
+def sorted_edges(
+    edges: set[tuple[str | None, str]], ambiguous: set[tuple[str | None, str]] | None = None
+) -> list[Edge]:
     # Sorted so the same lockfile always gives the same output.
+    ambiguous = ambiguous or set()
     return [
-        Edge(parent_key=p, child_key=c) for p, c in sorted(edges, key=lambda e: (e[0] or "", e[1]))
+        Edge(parent_key=p, child_key=c, ambiguous=(p, c) in ambiguous)
+        for p, c in sorted(edges, key=lambda e: (e[0] or "", e[1]))
     ]

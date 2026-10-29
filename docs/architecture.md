@@ -131,7 +131,7 @@ sequenceDiagram
    ([ADR-0008](adr/0008-background-scans-in-process.md)).
 2. **Fetch** (`running`). Get the default branch's commit SHA, then the file tree
    (`git/trees/{sha}?recursive=1`). Keep only `package-lock.json`, `poetry.lock`, `uv.lock` and
-   `requirements*.txt` (files like `requirements-dev.txt` still count as production; see the spec's dev/prod rule).
+   `requirements*.txt`, plus any `.txt` inside a `requirements/` folder such as `requirements/base.txt` (files like `requirements-dev.txt` still count as production; see the spec's dev/prod rule).
    Skip anything inside a `node_modules`, `test`, `tests`, `__tests__`, `fixtures` or `testdata` folder (installed
    packages and test data, not services). At most 25 lockfiles per repo (more → partial reason) and 10 MB per file.
    For a `poetry.lock`, also fetch the `pyproject.toml` beside it, because only that file says which dependencies
@@ -140,7 +140,7 @@ sequenceDiagram
    ([ADR-0012](adr/0012-fetch-lockfiles-via-tree-api.md)).
 3. **Parse.** Each parser returns entries and edges. Unpinned requirements go to `skipped_packages`
    with reason `version_unknown`; git, URL and local-path packages with reason `not_from_registry` (OSV can't match them) ([ADR-0002](adr/0002-lockfiles-only-no-version-guessing.md)). PyPI names are
-   normalised (PEP 503). A service with more than 2,000 entries, or a file that can't be parsed, fails that service only, with a clear
+   normalised (PEP 503). A service with more than 5,000 entries, or a file that can't be parsed, fails that service only, with a clear
    message; the other services are still scanned.
 4. **Match.** OSV `querybatch` in batches of at most 1,000 queries; results that come back in pages are followed
    until complete. Every call has a timeout and up to 3 retries with exponential backoff.
@@ -154,8 +154,10 @@ sequenceDiagram
 6. **Fixed version.** Computed by our code from the advisory's affected ranges: the smallest fixed version above
    the installed one, plus a major-bump flag.
 7. **Graph.** Capacity check (section 5.1). If there's room, replace this service's subgraph in one transaction
-   using batched writes. If not, skip the graph (findings are still stored) and add the partial reason
-   "dependency paths unavailable: graph storage full".
+   using batched writes. If not, skip the graph (findings are still stored), keep that service's previous graph,
+   and add the partial reason "dependency paths unavailable: graph storage full". If Neo4j can't be reached, the
+   reason is "dependency paths unavailable: graph database unreachable". Graphs of the repo's services that
+   are gone or failed in this scan are deleted, so no stale paths remain.
 8. **Score.** Look up KEV and EPSS by the finding's CVE alias. **Reach** = number of the user's services whose
    latest scan contains the same package version and advisory. Compute tier, subgroup, risk score and tie-breaker
    ([ADR-0003](adr/0003-risk-tiers-and-stored-scores.md)), then write `findings` and
@@ -268,8 +270,8 @@ Smaller choices made here without an ADR:
 
 ```mermaid
 flowchart LR
-  S[":Service<br/>id, repo_id, lockfile_path, ecosystem"]
-  D1[":Dep<br/>service_id, key, ecosystem,<br/>name, version, dev"]
+  S[":Service<br/>id, repo_id, lockfile_path,<br/>ecosystem, lockfile_type"]
+  D1[":Dep<br/>service_id, key, ecosystem,<br/>name, version, dev, direct"]
   D2[":Dep"]
   D3[":Dep"]
   SS[":SystemStatus<br/>last_refreshed"]
@@ -284,6 +286,11 @@ flowchart LR
 - **`key`** = the npm lockfile install path (e.g. `node_modules/a/node_modules/b`), or
   `normalised-name==version` for Python (a Python lockfile can hold two versions of one package, one per Python
   version). Keying npm by path keeps two copies of the same package inside one lockfile apart.
+- **`DEPENDS_ON` edges carry `ambiguous`.** poetry.lock names a dependency's package but not its version. When
+  the lock holds several versions, the dependency's version constraint and markers pick one
+  (`parsers/poetry_constraints.py`, checked against Python 2.7 and 3.6–3.14 on Linux, Windows and macOS). If more than
+  one is still possible, there is an edge to each, marked `ambiguous: true`, and path results show it. Every
+  other lockfile type records exact edges.
 - **Vulnerabilities are not stored in Neo4j.** Postgres `findings` records the `dep_key`, and the graph is used for
   paths and package lookups.
 
@@ -292,6 +299,8 @@ flowchart LR
 CREATE CONSTRAINT service_id  FOR (s:Service) REQUIRE s.id IS UNIQUE;
 CREATE CONSTRAINT dep_key     FOR (d:Dep)     REQUIRE (d.service_id, d.key) IS UNIQUE;
 CREATE INDEX      dep_package FOR (d:Dep)     ON (d.ecosystem, d.name, d.version);
+CREATE INDEX      dep_service  FOR (d:Dep)     ON (d.service_id);  // a service's whole tree
+CREATE INDEX      service_repo FOR (s:Service) ON (s.repo_id);     // finding a repo's stale services
 ```
 
 **Queries**

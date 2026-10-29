@@ -13,6 +13,7 @@ from packaging.requirements import InvalidRequirement, Requirement
 from depguard.parsers.common import load_toml, sorted_edges
 from depguard.parsers.models import Entry, ParsedService, ParseError, SkippedPackage
 from depguard.parsers.names import normalize_pypi_name, pypi_key
+from depguard.parsers.poetry_constraints import Locked, pick_versions
 
 NOT_REGISTRY_SOURCES = {"git", "directory", "file", "url"}
 
@@ -32,8 +33,8 @@ def parse_poetry_lock(
         raise ParseError("invalid poetry.lock: 'package' is not a list")
 
     entries: dict[str, Entry] = {}
-    keys_by_name: dict[str, list[str]] = defaultdict(list)
-    dependencies: dict[str, list[str]] = {}
+    locked_by_name: dict[str, list[Locked]] = defaultdict(list)
+    dependencies: dict[str, dict[str, Any]] = {}  # parent key -> {dependency name: constraint}
     skipped: list[SkippedPackage] = []
 
     for package in packages:
@@ -48,30 +49,38 @@ def parse_poetry_lock(
         if not package.get("version"):
             skipped.append(SkippedPackage(name=name, spec="", reason="version_unknown"))
             continue
-        key = pypi_key(name, str(package["version"]))
-        entries[key] = Entry(
-            key=key, name=name, version=str(package["version"]), dev=is_dev(package), direct=False
+        version = str(package["version"])
+        key = pypi_key(name, version)
+        entries[key] = Entry(key=key, name=name, version=version, dev=is_dev(package), direct=False)
+        python_versions = str(package.get("python-versions", "*"))
+        locked_by_name[name].append(
+            Locked(key=key, version=version, python_versions=python_versions)
         )
-        keys_by_name[name].append(key)
-        dependencies[key] = [normalize_pypi_name(dep) for dep in package.get("dependencies", {})]
+        package_dependencies = table(package.get("dependencies", {}), "poetry.lock dependencies")
+        dependencies[key] = {
+            normalize_pypi_name(dep): spec for dep, spec in package_dependencies.items()
+        }
 
-    # Dependencies name a package, not a version. If the lock holds two versions of it (one per
-    # Python version), we link to both, because the lock doesn't say which one this parent uses.
-    edges: set[tuple[str | None, str]] = set()
-    for parent, names in dependencies.items():
-        for dep in names:
-            edges.update((parent, child) for child in keys_by_name.get(dep, []))
+    # Dependencies name a package, not a version; pick_versions chooses which locked version(s).
+    edges: dict[tuple[str | None, str], bool] = {}  # (parent, child) -> ambiguous
+
+    def add_edges(parent: str | None, name: str, spec: Any) -> None:
+        for child, ambiguous in pick_versions(spec, locked_by_name.get(name, [])).items():
+            edges[(parent, child)] = edges.get((parent, child), True) and ambiguous
+
+    for parent, specs in dependencies.items():
+        for name, spec in specs.items():
+            add_edges(parent, name, spec)
 
     warnings: list[str] = []
     if pyproject is not None:
-        direct_names = direct_dependency_names(load_toml(pyproject))
-        for dep in direct_names:
-            edges.update((None, child) for child in keys_by_name.get(dep, []))
+        for name, direct_specs in direct_dependency_constraints(load_toml(pyproject)).items():
+            add_edges(None, name, direct_specs)
     else:
         # Fallback: a package nothing depends on must have been asked for directly.
         warnings.append("pyproject.toml not found next to poetry.lock; direct dependencies guessed")
         has_parent = {child for _, child in edges}
-        edges.update((None, key) for key in entries if key not in has_parent)
+        edges.update({(None, key): False for key in entries if key not in has_parent})
 
     direct = {child for parent, child in edges if parent is None}
     return ParsedService(
@@ -79,32 +88,49 @@ def parse_poetry_lock(
         lockfile_type="poetry-lock",
         ecosystem="PyPI",
         entries=[e.model_copy(update={"direct": e.key in direct}) for e in entries.values()],
-        edges=sorted_edges(edges),
+        edges=sorted_edges(set(edges), {edge for edge, ambiguous in edges.items() if ambiguous}),
         skipped=skipped,
         warnings=warnings,
     )
 
 
-def direct_dependency_names(pyproject: dict[str, Any]) -> set[str]:
-    """Every package the project asks for itself: main, extras and all groups (any layout)."""
-    names: set[str] = set()
-    project = pyproject.get("project", {})
+def direct_dependency_constraints(pyproject: dict[str, Any]) -> dict[str, list[Any]]:
+    """Every package the project asks for itself (main, extras, all groups, any layout), with
+    its constraints in poetry.lock's shape, so pick_versions can read both."""
+    found: dict[str, list[Any]] = defaultdict(list)
+    project = table(pyproject.get("project", {}), "pyproject [project]")
     requirement_lists: list[Any] = [project.get("dependencies", [])]
-    requirement_lists += list(project.get("optional-dependencies", {}).values())
-    requirement_lists += list(pyproject.get("dependency-groups", {}).values())
+    requirement_lists += list(table(project.get("optional-dependencies", {}), "extras").values())
+    requirement_lists += list(table(pyproject.get("dependency-groups", {}), "groups").values())
     for requirements in requirement_lists:
-        for requirement in requirements:
-            if isinstance(
-                requirement, str
-            ):  # dependency-groups may also hold {include-group = ...}
+        if not isinstance(requirements, list):
+            raise ParseError("invalid pyproject.toml: a dependency list is not a list")
+        for line in requirements:
+            if isinstance(line, str):  # dependency-groups may also hold {include-group = ...}
                 try:
-                    names.add(normalize_pypi_name(Requirement(requirement).name))
+                    requirement = Requirement(line)
                 except InvalidRequirement:
                     continue
+                found[normalize_pypi_name(requirement.name)].append(
+                    {
+                        "version": str(requirement.specifier) or "*",
+                        "markers": str(requirement.marker or ""),
+                    }
+                )
 
-    poetry = pyproject.get("tool", {}).get("poetry", {})
+    poetry = table(table(pyproject.get("tool", {}), "[tool]").get("poetry", {}), "[tool.poetry]")
     tables = [poetry.get("dependencies", {}), poetry.get("dev-dependencies", {})]
-    tables += [group.get("dependencies", {}) for group in poetry.get("group", {}).values()]
-    for table in tables:
-        names.update(normalize_pypi_name(name) for name in table if name != "python")
-    return names
+    groups = table(poetry.get("group", {}), "[tool.poetry.group]").values()
+    tables += [table(group, "a Poetry group").get("dependencies", {}) for group in groups]
+    for dependency_table in tables:
+        for name, spec in table(dependency_table, "Poetry dependencies").items():
+            if name != "python":
+                found[normalize_pypi_name(name)] += spec if isinstance(spec, list) else [spec]
+    return dict(found)
+
+
+def table(value: Any, where: str) -> dict[str, Any]:
+    """The files come from other people's repos: a wrong shape is a ParseError, not a crash."""
+    if not isinstance(value, dict):
+        raise ParseError(f"invalid {where}: expected a table")
+    return value

@@ -21,6 +21,25 @@ jobs:
     defaults:
       run:
         working-directory: apps/api
+    # For the integration tests (tests/integration). Same image as docker-compose.yml; the
+    # password is a throwaway for this temporary container, not a secret.
+    services:
+      neo4j:
+        image: neo4j:2026.10.1-community
+        env:
+          NEO4J_AUTH: neo4j/ci-only-password
+        ports:
+          - 7687:7687
+        options: >-
+          --health-cmd "cypher-shell -u neo4j -p ci-only-password 'RETURN 1'"
+          --health-interval 10s
+          --health-timeout 10s
+          --health-retries 12
+          --health-start-period 20s
+    env:
+      NEO4J_URI: bolt://localhost:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: ci-only-password
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

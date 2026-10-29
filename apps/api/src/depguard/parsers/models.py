@@ -25,6 +25,9 @@ class Entry(BaseModel):
 class Edge(BaseModel):
     parent_key: str | None  # None = the service itself (a direct dependency)
     child_key: str
+    # Poetry only: the lock holds several versions of the child and nothing says which one
+    # the parent uses, so there is an edge to each (parsers/poetry_constraints.py).
+    ambiguous: bool = False
 
 
 class SkippedPackage(BaseModel):

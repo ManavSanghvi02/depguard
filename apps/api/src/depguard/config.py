@@ -18,7 +18,14 @@ class Settings(BaseSettings):
 
     max_lockfiles_per_repo: int = 25
     max_lockfile_bytes: int = 10_000_000
-    max_entries_per_service: int = 2_000
+    max_entries_per_service: int = 5_000
+
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = "neo4j"
+    neo4j_password: str = ""
+    # AuraDB Free limits (spec §8.1). Aura doesn't report them through Cypher, so they are settings.
+    graph_max_nodes: int = 200_000
+    graph_max_relationships: int = 400_000
 
 
 @lru_cache
