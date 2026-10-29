@@ -44,6 +44,7 @@ class AgentState(TypedDict):
     attempts: int
     draft: ExplanationDraft | None  # set only when it passed the check
     problems: list[str]
+    rejected: list[str]  # the problems of every rejected submission, for the evals
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,8 @@ class AgentResult:
     draft: ExplanationDraft | None
     problems: list[str]  # why the last submission was rejected
     tokens: int  # as counted by the provider, all calls together
+    attempts: int = 0  # submissions checked
+    rejected: tuple[str, ...] = ()  # problems of every rejected submission, kept after a retry
 
 
 def build_graph(
@@ -106,6 +109,7 @@ def build_graph(
             "attempts": state["attempts"] + 1,
             "draft": None if problems else draft,
             "problems": problems,
+            "rejected": state["rejected"] + problems,
         }
 
     def after_agent(state: AgentState) -> Literal["tools", "check"]:
@@ -176,7 +180,14 @@ async def run_agent(
             "attempts": 0,
             "draft": None,
             "problems": [],
+            "rejected": [],
         },
         config={"recursion_limit": RECURSION_LIMIT, "callbacks": callbacks},
     )
-    return AgentResult(state["draft"], state["problems"], state["tokens"])
+    return AgentResult(
+        state["draft"],
+        state["problems"],
+        state["tokens"],
+        state["attempts"],
+        tuple(state["rejected"]),
+    )

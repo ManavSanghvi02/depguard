@@ -87,10 +87,12 @@ def reads_then_submits(args: dict[str, Any]) -> Script:
     return script
 
 
-def llm(primary: FakeChat | None = None, fallback: FakeChat | None = None) -> Llm:
+def llm(primary: FakeChat | None = None, *fallbacks: FakeChat) -> Llm:
+    """Fallbacks are named fake-gemini, fake-gemini-2, ... in the order given."""
+    names = [f"fake-gemini{f'-{i + 1}' if i else ''}" for i in range(len(fallbacks))]
     return Llm(
         Provider("groq", "fake-groq", primary) if primary else None,
-        Provider("gemini", "fake-gemini", fallback) if fallback else None,
+        tuple(Provider("gemini", n, chat) for n, chat in zip(names, fallbacks, strict=True)),
     )
 
 

@@ -26,6 +26,7 @@ def test_groq_is_used_first() -> None:
     outcome = run(llm(FakeChat(replies=[submit(GOOD)]), gemini), lodash())
 
     assert outcome.status == "ok" and outcome.model == "fake-groq"
+    assert outcome.attempts == 1 and outcome.rejected == () and outcome.tokens > 0
     assert gemini.calls == []
 
 
@@ -44,8 +45,37 @@ def test_gemini_is_never_called_for_a_private_or_unknown_repo(private: bool | No
     assert gemini.calls == []
     assert outcome == Outcome(
         "unavailable",
-        error="groq: HTTPStatusError; fallback not allowed: repo is not known to be public",
+        error="fake-groq: HTTPStatusError; fallback not allowed: repo is not known to be public",
     )
+
+
+def test_the_gemini_models_are_tried_in_order() -> None:
+    overloaded = FakeChat(replies=[rate_limited()])
+    second = FakeChat(replies=[submit(GOOD)])
+    outcome = run(llm(FakeChat(replies=[rate_limited()]), overloaded, second), lodash())
+
+    assert outcome.status == "ok" and outcome.model == "fake-gemini-2"
+    assert len(overloaded.calls) == 1
+
+
+def test_when_every_model_fails_the_explanation_is_skipped() -> None:
+    models = llm(FakeChat(replies=[rate_limited()]), FakeChat(replies=[rate_limited()]),
+                 FakeChat(replies=[rate_limited()]))  # fmt: skip
+    outcome = run(models, lodash())
+
+    assert outcome == Outcome(
+        "unavailable",
+        error="fake-groq: HTTPStatusError; fake-gemini: HTTPStatusError;"
+        " fake-gemini-2: HTTPStatusError",
+    )
+
+
+def test_a_slow_gemini_model_is_cut_off_by_its_deadline_then_the_next_is_tried() -> None:
+    slow = FakeChat(replies=[submit(GOOD)], delay=1)
+    fast = FakeChat(replies=[submit(GOOD)])
+    outcome = run(llm(FakeChat(replies=[rate_limited()]), slow, fast), lodash(), deadline=0.05)
+
+    assert outcome.status == "ok" and outcome.model == "fake-gemini-2"
 
 
 def test_a_failed_fact_check_does_not_use_the_fallback() -> None:
@@ -59,7 +89,7 @@ def test_a_failed_fact_check_does_not_use_the_fallback() -> None:
 
 def test_a_slow_provider_hits_the_deadline() -> None:
     outcome = run(llm(FakeChat(replies=[submit(GOOD)], delay=1)), lodash(), deadline=0.05)
-    assert outcome == Outcome("unavailable", error="groq: TimeoutError")
+    assert outcome == Outcome("unavailable", error="fake-groq: TimeoutError")
 
 
 def test_without_keys_explanations_are_unavailable() -> None:

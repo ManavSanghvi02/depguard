@@ -50,6 +50,11 @@ docker-compose.override.yml
 compose.override.yml
 .docker/
 
+# ---------- Agent eval results (docs/evals.md; the summary goes into the doc) ----------
+apps/api/evals-results/
+# Large lockfiles the golden-set builder downloads at a fixed commit (apps/api/evals/cases.toml).
+apps/api/evals/lockfiles/nodejs-goof/
+
 # ---------- Logs / temp ----------
 logs/
 *.log

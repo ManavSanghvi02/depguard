@@ -35,6 +35,9 @@ def test_a_failed_fact_check_is_retried_once_with_the_problems() -> None:
 
     assert result.draft is not None
     assert "unverified number or version 4.17.21" in tool_messages(model)[0]
+    # The evals still see the first attempt's problem after the retry passed.
+    assert result.attempts == 2
+    assert result.rejected == ("unverified number or version 4.17.21",)
 
 
 def test_two_failed_submissions_give_no_explanation() -> None:

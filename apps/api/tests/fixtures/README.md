@@ -11,6 +11,14 @@ Small hand-made lockfiles for edge cases live inline in the tests.
 
 Downloaded on 2026-10-28 with `gh api -H "Accept: application/vnd.github.raw" repos/<repo>/contents/<path>?ref=<commit>`.
 
+The agent evals (docs/evals.md) also use two lockfiles under `apps/api/evals/lockfiles/`:
+- `nodejs-goof/package-lock.json` from [snyk-labs/nodejs-goof](https://github.com/snyk-labs/nodejs-goof)
+  (Apache-2.0) at `add14ba59e98240d9e00a235dd7d42cd61ae9912`. At 760 KB it is over the 500 KB
+  pre-commit limit, so it isn't committed: `make golden` downloads it and checks its SHA-256
+  (`apps/api/evals/cases.toml`).
+- `event-stream/package-lock.json`, hand-made: event-stream 3.3.6 and the malicious flatmap-stream
+  0.1.1 it pulled in (the 2018 incident), with event-stream's other dependencies left out.
+
 ## Recorded API responses
 
 | Folder | Source | Recorded | What |

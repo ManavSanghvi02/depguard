@@ -1,7 +1,7 @@
 # Shortcuts for local development. Recipes stay simple so they run in cmd, PowerShell and CI (Linux).
 API = uv run --directory apps/api
 
-.PHONY: setup dev db-up db-down migrate refresh compare test lint format
+.PHONY: setup dev db-up db-down migrate refresh compare golden evals test lint format
 
 setup:
 	uv sync --directory apps/api
@@ -29,6 +29,14 @@ refresh:
 # Default: the fixture lockfiles. Example: make compare ARGS="--repo snyk-labs/nodejs-goof"
 compare:
 	$(API) python scripts/compare_osv_scanner.py $(ARGS)
+
+# Rebuild apps/api/evals/golden_set.json from evals/cases.toml, OSV and today's KEV/EPSS.
+golden:
+	$(API) python scripts/build_golden_set.py $(ARGS)
+
+# Agent evals with the real LLMs (docs/evals.md). Example: make evals ARGS="--write-doc"
+evals:
+	$(API) python -m depguard.evals.run $(ARGS)
 
 test:
 	$(API) pytest
