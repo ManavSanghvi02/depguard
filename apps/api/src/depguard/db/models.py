@@ -17,6 +17,7 @@ from sqlalchemy import (
     Numeric,
     Text,
     UniqueConstraint,
+    false,
     func,
     text,
 )
@@ -57,6 +58,8 @@ class Repo(Base):
     owner: Mapped[str] = mapped_column(Text)  # lowercase: GitHub names are case-insensitive
     name: Mapped[str] = mapped_column(Text)
     default_branch: Mapped[str | None] = mapped_column(Text)
+    # From GitHub on every scan. None (never scanned) counts as private: no Gemini (ADR-0013).
+    is_private: Mapped[bool | None]
     created_at: Mapped[datetime] = created_at()
 
 
@@ -167,6 +170,7 @@ class Finding(Base):
     major_bump: Mapped[bool]
     is_dev: Mapped[bool]
     is_direct: Mapped[bool]
+    is_bundled: Mapped[bool] = mapped_column(server_default=text("false"))
 
 
 class FindingScore(Base):
@@ -187,6 +191,30 @@ class FindingScore(Base):
     tier: Mapped[str] = mapped_column(Text)
     subgroup: Mapped[str | None] = mapped_column(Text)
     risk_score: Mapped[Decimal] = mapped_column(Numeric(5, 4))
+    created_at: Mapped[datetime] = created_at()
+
+
+class Explanation(Base):
+    """One row per attempt (ADR-0013). The newest row is the finding's current explanation."""
+
+    __tablename__ = "explanations"
+    __table_args__ = (
+        CheckConstraint("status IN ('ok', 'unavailable')", name="explanation_status"),
+        Index("explanations_latest", "finding_id", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = uuid_pk()
+    finding_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("findings.id", ondelete="CASCADE"))
+    # Hash of everything the agent can see; an equal key in the same repo reuses the text.
+    cache_key: Mapped[str] = mapped_column(Text, index=True)
+    data_date: Mapped[date | None] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(Text)
+    text: Mapped[str | None] = mapped_column(Text)
+    model: Mapped[str | None] = mapped_column(Text)
+    trace_id: Mapped[str | None] = mapped_column(Text)
+    fact_check_passed: Mapped[bool]
+    # The column `text` above hides sqlalchemy's text() inside this class, hence false().
+    cache_hit: Mapped[bool] = mapped_column(server_default=false())
+    error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = created_at()
 
 

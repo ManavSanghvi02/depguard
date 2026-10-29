@@ -32,6 +32,21 @@ class Settings(BaseSettings):
     graph_max_nodes: int = 200_000
     graph_max_relationships: int = 400_000
 
+    # Explanations (ADR-0013). Without a Groq key every explanation is "unavailable".
+    groq_api_key: str = ""
+    groq_model: str = "openai/gpt-oss-120b"
+    # gpt-oss thinks before answering, and those tokens count against the limit; "" = model default.
+    groq_reasoning_effort: str = "low"
+    groq_tokens_per_minute: int = 7_500  # the free limit is 8,000; kept below it on purpose
+    # Fallback for public repos only: Gemini's free tier uses prompts to improve Google's products.
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-3.8-flash"
+    llm_timeout_seconds: float = 20  # one LLM call
+    explanation_deadline_seconds: float = 90  # one finding, all calls and the retry
+    langfuse_public_key: str = ""
+    langfuse_secret_key: str = ""
+    langfuse_host: str = "https://cloud.langfuse.com"
+
 
 @lru_cache
 def get_settings() -> Settings:

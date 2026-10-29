@@ -163,3 +163,17 @@ def test_git_and_file_dependencies_are_skipped() -> None:
         ("g", "not_from_registry"),
         ("f", "not_from_registry"),
     }
+
+
+def test_bundled_entries_are_flagged() -> None:
+    service = parse(
+        {
+            "": {"devDependencies": {"nyc": "11.9.0"}},
+            "node_modules/nyc": {"version": "11.9.0", "dev": True},
+            "node_modules/nyc/node_modules/lodash": {"version": "4.17.10", "inBundle": True},
+        }
+    )
+    entries = by_key(service)
+
+    assert entries["node_modules/nyc/node_modules/lodash"].bundled is True
+    assert entries["node_modules/nyc"].bundled is False

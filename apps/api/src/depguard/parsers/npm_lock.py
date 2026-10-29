@@ -92,6 +92,7 @@ def parse_package_lock(content: bytes, lockfile_path: str) -> ParsedService:
             # devOptional = also needed in production (as an optional dependency).
             dev=bool(info.get("dev")),
             direct=False,
+            bundled=bool(info.get("inBundle")),
         )
 
     edges: set[tuple[str | None, str]] = set()
