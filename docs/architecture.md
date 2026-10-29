@@ -131,13 +131,17 @@ sequenceDiagram
    ([ADR-0008](adr/0008-background-scans-in-process.md)).
 2. **Fetch** (`running`). Get the default branch's commit SHA, then the file tree
    (`git/trees/{sha}?recursive=1`). Keep only `package-lock.json`, `poetry.lock`, `uv.lock` and
-   `requirements*.txt` (files like `requirements-dev.txt` still count as production; see the spec's dev/prod rule),
-   and download each through the blob API, which also works for files over 1 MB. If the tree
+   `requirements*.txt` (files like `requirements-dev.txt` still count as production; see the spec's dev/prod rule).
+   Skip anything inside a `node_modules`, `test`, `tests`, `__tests__`, `fixtures` or `testdata` folder (installed
+   packages and test data, not services). At most 25 lockfiles per repo (more → partial reason) and 10 MB per file.
+   For a `poetry.lock`, also fetch the `pyproject.toml` beside it, because only that file says which dependencies
+   are direct. Download each through the blob API, which also works for files over 1 MB. If the tree
    comes back truncated, record a partial reason. Each lockfile becomes a **service**
    ([ADR-0012](adr/0012-fetch-lockfiles-via-tree-api.md)).
 3. **Parse.** Each parser returns entries and edges. Unpinned requirements go to `skipped_packages`
-   with reason `version_unknown` ([ADR-0002](adr/0002-lockfiles-only-no-version-guessing.md)). PyPI names are
-   normalised (PEP 503). A service with more than 2,000 entries is refused with a clear message.
+   with reason `version_unknown`; git, URL and local-path packages with reason `not_from_registry` (OSV can't match them) ([ADR-0002](adr/0002-lockfiles-only-no-version-guessing.md)). PyPI names are
+   normalised (PEP 503). A service with more than 2,000 entries, or a file that can't be parsed, fails that service only, with a clear
+   message; the other services are still scanned.
 4. **Match.** OSV `querybatch` in batches of at most 1,000 queries; results that come back in pages are followed
    until complete. Every call has a timeout and up to 3 retries with exponential backoff.
    If a chunk still fails, its packages are stored as `skipped_packages(reason=osv_unavailable)` and the scan will end
@@ -277,9 +281,9 @@ flowchart LR
 
 - **`Dep` nodes belong to exactly one service.** Edges only ever connect nodes of the same service, so a
   path can't jump to another lockfile.
-- **`key`** = the npm lockfile install path (e.g. `node_modules/a/node_modules/b`), or the normalised
-  package name for Python (one version per environment). Keying npm by path keeps two copies of the same
-  package inside one lockfile apart.
+- **`key`** = the npm lockfile install path (e.g. `node_modules/a/node_modules/b`), or
+  `normalised-name==version` for Python (a Python lockfile can hold two versions of one package, one per Python
+  version). Keying npm by path keeps two copies of the same package inside one lockfile apart.
 - **Vulnerabilities are not stored in Neo4j.** Postgres `findings` records the `dep_key`, and the graph is used for
   paths and package lookups.
 
@@ -333,7 +337,7 @@ erDiagram
 | `repos` | `id`, `user_id`, `owner`, `name`, `default_branch` | Unique (`user_id`, `owner`, `name`); max 10 per user. App installations aren't stored; they're looked up live |
 | `services` | `id`, `repo_id`, `lockfile_path`, `ecosystem`, `lockfile_type` | One per lockfile |
 | `scans` | `id`, `repo_id`, `status`, `partial_reasons` (jsonb), `commit_sha`, `data_date`, `started_at`, `finished_at`, `duration_ms`, `error` | Status: queued / running / done / partial / failed |
-| `skipped_packages` | `scan_id`, `service_id`, `name`, `spec`, `reason` | `version_unknown` or `osv_unavailable` |
+| `skipped_packages` | `scan_id`, `service_id`, `name`, `spec`, `reason` | `version_unknown`, `not_from_registry` or `osv_unavailable` |
 | `advisories` | `id`, `aliases[]`, `summary`, `cvss_score`, `cvss_vector`, `cvss_version`, `is_malicious`, `withdrawn`, `modified`, `raw` (jsonb), `fetched_at` | OSV cache |
 | `kev_entries` | `cve_id`, `date_added`, `due_date`, `known_ransomware` | Replaced daily |
 | `epss_scores` | `cve_id`, `score`, `percentile`, `data_date` | Latest snapshot only (fits the 500 MB limit) |
