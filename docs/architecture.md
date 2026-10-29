@@ -166,7 +166,7 @@ sequenceDiagram
 9. **Finish.** `status=done`, or **`partial`** with `partial_reasons`. The UI shows a banner such as
    *"Partial scan: 37 packages could not be checked because OSV was unavailable. Re-run to complete."*
 10. **Explain** (a separate step that never changes scan status). The top 5 findings go to the agent, then the fact
-    checker; the explanation is stored, or marked `unavailable` if the LLM fails
+    checker; the explanation is stored (and reused while its inputs are unchanged), or marked `unavailable` if the LLM fails
     ([ADR-0013](adr/0013-explanation-agent-and-llm.md)).
 11. **Show.** The web app polls `GET /v1/scans/{id}` about every 3 s, then loads `GET /v1/scans/{id}/findings`.
 
@@ -257,7 +257,7 @@ Every row was decided with two options compared; the reasoning is in the ADR.
 | 10 | Where are fix PRs built? | GitHub Actions, two isolated jobs | [0010](adr/0010-fix-prs-built-in-github-actions.md) |
 | 11 | How is MCP served and secured? | Mounted in the API, per-user tokens | [0011](adr/0011-mcp-in-api-with-user-tokens.md) |
 | 12 | How are repos read? | Tree API + blobs with a read-only token | [0012](adr/0012-fetch-lockfiles-via-tree-api.md) |
-| 13 | How are explanations generated? | LangGraph agent; LLM provider *Proposed* | [0013](adr/0013-explanation-agent-and-llm.md) |
+| 13 | How are explanations generated? | LangGraph agent; Groq, Gemini fallback for public repos only | [0013](adr/0013-explanation-agent-and-llm.md) |
 | 14 | Which language and frameworks? | Python + FastAPI; Next.js + TypeScript | [0014](adr/0014-language-and-framework.md) |
 | 15 | Which ecosystems? | npm and PyPI only | [0015](adr/0015-npm-and-pypi-scope.md) |
 
@@ -349,16 +349,16 @@ erDiagram
 |---|---|---|
 | `profiles` | `user_id` (Supabase auth id), `github_id` (numeric), `github_login`, `created_at` | `github_id` is used for ownership checks; the login is for display only |
 | `api_tokens` | `id`, `user_id`, `prefix`, `token_hash`, `name`, `last_used_at`, `revoked_at` | Raw token shown once; only the SHA-256 hash is stored |
-| `repos` | `id`, `user_id`, `owner`, `name`, `default_branch` | Unique (`user_id`, `owner`, `name`); max 10 per user. App installations aren't stored; they're looked up live |
+| `repos` | `id`, `user_id`, `owner`, `name`, `default_branch`, `is_private` (from GitHub each scan; null = private, no Gemini) | Unique (`user_id`, `owner`, `name`); max 10 per user. App installations aren't stored; they're looked up live |
 | `services` | `id`, `repo_id`, `lockfile_path`, `ecosystem`, `lockfile_type` | One per lockfile |
 | `scans` | `id`, `repo_id`, `status`, `partial_reasons` (jsonb), `commit_sha`, `data_date`, `created_at`, `started_at`, `finished_at`, `duration_ms`, `error`, `osv_complete` | Status: queued / running / done / partial / failed |
 | `skipped_packages` | `scan_id`, `service_id`, `name`, `spec`, `reason` | `version_unknown`, `not_from_registry` or `osv_unavailable` |
 | `advisories` | `id`, `aliases[]`, `summary`, `cvss_score`, `cvss_vector`, `cvss_version`, `is_malicious`, `withdrawn`, `modified`, `raw` (jsonb), `fetched_at` | OSV cache; `raw` is null for an ID whose details couldn't be fetched yet (retried next scan) |
 | `kev_entries` | `cve_id`, `date_added`, `due_date`, `known_ransomware` | Replaced daily |
 | `epss_scores` | `cve_id`, `score`, `percentile`, `data_date` | Latest snapshot only (fits the 500 MB limit); rounded to 3 decimals |
-| `findings` | `id`, `scan_id`, `service_id`, `dep_key`, `ecosystem`, `package`, `installed_version`, `installed_version_norm`, `advisory_id`, `aliases[]`, `summary`, `cvss`, `is_malicious`, `fixed_version`, `major_bump`, `is_dev`, `is_direct` | One per (entry, merged advisory). `advisory_id` = the group's main ID; `aliases` = every ID in the group (CVEs for KEV/EPSS); `cvss` = the group's highest |
+| `findings` | `id`, `scan_id`, `service_id`, `dep_key`, `ecosystem`, `package`, `installed_version`, `installed_version_norm`, `advisory_id`, `aliases[]`, `summary`, `cvss`, `is_malicious`, `fixed_version`, `major_bump`, `is_dev`, `is_direct`, `is_bundled` | One per (entry, merged advisory). `advisory_id` = the group's main ID; `aliases` = every ID in the group (CVEs for KEV/EPSS); `cvss` = the group's highest |
 | `finding_scores` | `finding_id`, `data_date`, `in_kev`, `epss`, `epss_percentile`, `cvss`, `reach`, `reach_complete`, `tier`, `subgroup`, `risk_score`, `created_at` | New row only when an input changes; the newest row is the current score |
-| `explanations` | `finding_id`, `data_date`, `text`, `model`, `trace_id`, `fact_check_passed`, `status` | |
+| `explanations` | `finding_id`, `cache_key`, `data_date`, `status` (`ok`/`unavailable`), `text`, `model`, `trace_id`, `fact_check_passed`, `cache_hit`, `error` | One row per attempt, newest = current; the API may only insert and read. Same `cache_key` in the same repo → text reused |
 | `fixes` | `id`, `finding_id`, `requested_by_github_id`, `strategy`, `target_version`, `status`, `workflow_run_id`, `pr_url`, `patch`, `error`, `created_at`, `updated_at` | Statuses explained in §3.2 |
 | `refresh_runs` | `id`, `ran_at`, `status`, `kev_count`, `epss_count`, `epss_date`, `rescored`, `error` | Written by the daily job, also when it fails |
 

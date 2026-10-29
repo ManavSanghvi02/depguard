@@ -26,6 +26,7 @@ class IngestResult(BaseModel):
     owner: str
     repo: str
     commit_sha: str
+    private: bool
     services: list[ParsedService]
     failed_services: list[FailedService]
     partial_reasons: list[str]
@@ -59,7 +60,8 @@ def parse_lockfile(
 async def ingest_repo(
     reader: GitHubReader, owner: str, repo: str, settings: Settings
 ) -> IngestResult:
-    commit_sha = await reader.latest_commit(owner, repo)
+    head = await reader.latest_commit(owner, repo)
+    commit_sha = head.commit_sha
     tree = await reader.tree(owner, repo, commit_sha)
     files_by_path = {file.path: file for file in tree.files}
 
@@ -113,6 +115,7 @@ async def ingest_repo(
         owner=owner,
         repo=repo,
         commit_sha=commit_sha,
+        private=head.private,
         services=services,
         failed_services=failed,
         partial_reasons=partial_reasons,

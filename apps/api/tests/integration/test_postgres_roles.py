@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 TABLES = {
     "profiles", "repos", "services", "scans", "skipped_packages", "advisories", "kev_entries",
-    "epss_scores", "findings", "finding_scores", "refresh_runs",
+    "epss_scores", "findings", "finding_scores", "refresh_runs", "explanations",
 }  # fmt: skip
 
 
@@ -78,6 +78,7 @@ def test_roles_do_not_bypass_rls_or_own_tables(postgres: None) -> None:
         "DELETE FROM finding_scores",
         "INSERT INTO advisories (id) VALUES ('GHSA-x')",
         "TRUNCATE findings",
+        "SELECT * FROM explanations",
     ],
 )
 def test_refresh_role_is_refused_outside_its_job(db: None, statement: str) -> None:
@@ -107,6 +108,19 @@ def test_refresh_role_can_do_its_job(db: None, statement: str) -> None:
     ],
 )
 def test_api_role_cannot_write_refresh_data(db: None, statement: str) -> None:
+    assert refused("depguard_api", statement)
+
+
+def test_api_role_can_read_explanations(db: None) -> None:
+    run("depguard_api", "SELECT * FROM explanations")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    ["UPDATE explanations SET text = 'changed'", "DELETE FROM explanations"],
+)
+def test_explanations_are_only_ever_added(db: None, statement: str) -> None:
+    # One row per attempt: an explanation that was shown can't be rewritten afterwards.
     assert refused("depguard_api", statement)
 
 

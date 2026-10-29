@@ -22,7 +22,7 @@ changes, a new ADR replaces the old one, and the old one is marked *Superseded*.
 | [0010](0010-fix-prs-built-in-github-actions.md) | Fix PRs built in GitHub Actions with two isolated jobs | Accepted |
 | [0011](0011-mcp-in-api-with-user-tokens.md) | MCP mounted in the API, per-user API tokens | Accepted |
 | [0012](0012-fetch-lockfiles-via-tree-api.md) | Fetch only lockfiles via the tree API with a read-only token | Accepted |
-| [0013](0013-explanation-agent-and-llm.md) | LangGraph for the explanation agent (LLM provider: Proposed) | Accepted (LLM: Proposed) |
+| [0013](0013-explanation-agent-and-llm.md) | LangGraph for the explanation agent; Groq, Gemini fallback for public repos only | Accepted |
 | [0014](0014-language-and-framework.md) | Python + FastAPI backend, Next.js + TypeScript frontend | Accepted |
 | [0015](0015-npm-and-pypi-scope.md) | Support npm and PyPI only | Accepted |
 

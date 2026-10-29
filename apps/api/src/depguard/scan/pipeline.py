@@ -1,4 +1,4 @@
-"""A whole repo scan (architecture §3, steps 2–9), run as a background task (ADR-0008).
+"""A whole repo scan (architecture §3, steps 2–10), run as a background task (ADR-0008).
 
 Status: queued -> running -> done | partial | failed. Anything that makes the results incomplete
 is a partial reason; only an unrecoverable error fails the scan.
@@ -17,6 +17,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from depguard.agent.explain import explain_scan
+from depguard.agent.llm import Llm
 from depguard.config import Settings
 from depguard.db.models import Finding, Repo, Scan, Service, SkippedPackage
 from depguard.github.cache import ByteCache
@@ -49,6 +51,7 @@ class ScanDeps:
     github_client: Callable[[], httpx.AsyncClient]
     osv_client: Callable[[], httpx.AsyncClient]
     cache: ByteCache
+    llm: Llm
 
 
 async def start_scan(session: AsyncSession, user_id: uuid.UUID, owner: str, name: str) -> uuid.UUID:
@@ -143,6 +146,7 @@ def save_results(
                 major_bump=draft.major_bump,
                 is_dev=draft.entry.dev,
                 is_direct=draft.entry.direct,
+                is_bundled=draft.entry.bundled,
             )
         )
 
@@ -154,6 +158,7 @@ async def scan_steps(session: AsyncSession, scan: Scan, repo: Repo, deps: ScanDe
             GitHubReader(github, deps.cache), repo.owner, repo.name, deps.settings
         )
     scan.commit_sha = ingest.commit_sha
+    repo.is_private = ingest.private
     reasons = list(ingest.partial_reasons)
     reasons += [f"{f.lockfile_path}: not scanned: {f.error}" for f in ingest.failed_services]
 
@@ -182,6 +187,7 @@ async def scan_steps(session: AsyncSession, scan: Scan, repo: Repo, deps: ScanDe
 
 async def run_scan(scan_id: uuid.UUID, deps: ScanDeps) -> None:
     started = time.monotonic()
+    scored = False
     async with deps.sessions() as session:
         scan = await session.get_one(Scan, scan_id)
         repo = await session.get_one(Repo, scan.repo_id)
@@ -196,11 +202,23 @@ async def run_scan(scan_id: uuid.UUID, deps: ScanDeps) -> None:
             # The scan counts as this repo's latest now, so scoring (and reach) includes it.
             await rescore(session, repo.user_id)
             await session.commit()
+            scored = True
         except (GitHubError, RateLimitError) as error:
             await fail(session, scan_id, started, str(error))
         except Exception:
             logger.exception("scan %s failed", scan_id)
             await fail(session, scan_id, started, "internal error; see the server log")
+    if scored:
+        await explain_step(scan_id, deps)
+
+
+async def explain_step(scan_id: uuid.UUID, deps: ScanDeps) -> None:
+    """Step 10, after the scan is finished and stored: it never changes the scan's status."""
+    try:
+        seconds = deps.settings.explanation_deadline_seconds
+        await explain_scan(deps.sessions, deps.driver, deps.llm, seconds, scan_id)
+    except Exception:
+        logger.exception("explanations for scan %s failed", scan_id)
 
 
 def finish(scan: Scan, started: float) -> None:

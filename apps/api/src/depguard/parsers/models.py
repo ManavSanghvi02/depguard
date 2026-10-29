@@ -20,6 +20,8 @@ class Entry(BaseModel):
     version: str
     dev: bool
     direct: bool
+    # npm only: ships inside another package's tarball ("inBundle"); can't be upgraded alone.
+    bundled: bool = False
 
 
 class Edge(BaseModel):

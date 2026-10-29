@@ -10,12 +10,23 @@ from datetime import date
 import pytest
 from conftest import role_engine
 from fake_github import FakeGitHub
+from fake_llm import GENERIC, FakeChat, llm, reads_then_submits
 from fake_osv import FakeOsv
 from fastapi import HTTPException
 from sqlalchemy import func, insert, select
 
+from depguard.agent.explain import TOP_N, retry_explanation
+from depguard.agent.llm import Llm
 from depguard.config import Settings
-from depguard.db.models import EpssScore, FindingScore, KevEntry, Profile, Scan
+from depguard.db.models import (
+    EpssScore,
+    Explanation,
+    FindingScore,
+    KevEntry,
+    Profile,
+    Repo,
+    Scan,
+)
 from depguard.db.neo4j import make_driver
 from depguard.db.postgres import make_sessions
 from depguard.github.cache import ByteCache
@@ -63,10 +74,15 @@ EPSS = [
 
 
 def run[T](
-    body: Callable[[ScanDeps], Awaitable[T]], osv: FakeOsv | None = None, **github: object
+    body: Callable[[ScanDeps], Awaitable[T]],
+    osv: FakeOsv | None = None,
+    models: Llm | None = None,
+    files: dict[str, bytes] = FILES,
+    **github: object,
 ) -> T:
-    """Run `body` with real databases and fake GitHub/OSV in one event loop."""
-    fake_github = FakeGitHub(FILES, **github)  # type: ignore[arg-type]
+    """Run `body` with real databases and fake GitHub/OSV/LLM in one event loop. Without
+    `models`, there is no LLM, as when no key is set."""
+    fake_github = FakeGitHub(files, **github)  # type: ignore[arg-type]
     fake_osv = osv or FakeOsv()
 
     async def go() -> T:
@@ -79,6 +95,7 @@ def run[T](
             github_client=fake_github.client,
             osv_client=fake_osv.client,
             cache=ByteCache(max_bytes=10_000_000),
+            llm=models or llm(),
         )
         try:
             return await body(deps)
@@ -422,3 +439,118 @@ def test_rescoring_lookups_take_more_ids_than_a_query_has_parameters(db: None) -
             return len(found)
 
     assert run(body) == 0
+
+
+def explained(findings: list[FindingOut]) -> list[FindingOut]:
+    return [f for f in findings if f.explanation is not None]
+
+
+def test_the_top_findings_are_explained_and_a_rescan_reuses_them(exploit_data: None) -> None:
+    groq = FakeChat(script=reads_then_submits(GENERIC))
+
+    async def body(deps: ScanDeps) -> tuple[ScanStatus, list[FindingOut], list[FindingOut]]:
+        await setup_user(deps)
+        first = await scan(deps)
+        second = await scan(deps)
+        try:
+            status, first_findings = await results(deps, first)
+            _, second_findings = await results(deps, second)
+            return status, first_findings, second_findings
+        finally:
+            await cleanup_graph(deps)
+
+    status, first, second = run(body, models=llm(groq))
+
+    assert status.status == "done"
+    top = explained(first)
+    assert [f.id for f in top] == [f.id for f in first[:TOP_N]]  # the top 5, in rank order
+    assert all(f.explanation and f.explanation.status == "ok" for f in top)
+    assert all(f.explanation and not f.explanation.cache_hit for f in top)
+    assert top[0].explanation and top[0].explanation.model == "fake-groq"
+    # Two LLM calls per finding (read, submit), and none for the rescan: same facts, same text.
+    assert len(groq.calls) == 2 * TOP_N
+    assert all(f.explanation and f.explanation.cache_hit for f in explained(second))
+
+
+def test_an_llm_outage_leaves_the_scan_done_and_explanations_unavailable(
+    exploit_data: None,
+) -> None:
+    groq = FakeChat(script=lambda _: RuntimeError("Groq is down"))
+
+    async def body(deps: ScanDeps) -> tuple[ScanStatus, list[FindingOut]]:
+        await setup_user(deps)
+        scan_id = await scan(deps)
+        try:
+            return await results(deps, scan_id)
+        finally:
+            await cleanup_graph(deps)
+
+    status, findings = run(body, models=llm(groq))
+
+    assert status.status == "done"
+    assert {f.explanation.status for f in explained(findings) if f.explanation} == {"unavailable"}
+    assert len(explained(findings)) == TOP_N
+
+
+def test_without_an_llm_key_scans_still_work(exploit_data: None) -> None:
+    async def body(deps: ScanDeps) -> tuple[ScanStatus, list[FindingOut]]:
+        await setup_user(deps)
+        scan_id = await scan(deps)
+        try:
+            return await results(deps, scan_id)
+        finally:
+            await cleanup_graph(deps)
+
+    status, findings = run(body)
+
+    assert status.status == "done" and findings
+    assert findings[0].explanation and findings[0].explanation.status == "unavailable"
+
+
+def test_a_retry_skips_the_cache_and_adds_a_row(exploit_data: None) -> None:
+    groq = FakeChat(script=reads_then_submits(GENERIC))
+
+    async def body(deps: ScanDeps) -> tuple[int, FindingOut]:
+        await setup_user(deps)
+        scan_id = await scan(deps)
+        try:
+            _, findings = await results(deps, scan_id)
+            seconds = deps.settings.explanation_deadline_seconds
+            await retry_explanation(deps.sessions, deps.driver, deps.llm, seconds, findings[0].id)
+            _, findings = await results(deps, scan_id)
+            async with deps.sessions() as session:
+                rows = await session.scalar(
+                    select(func.count()).where(Explanation.finding_id == findings[0].id)
+                )
+            return rows or 0, findings[0]
+        finally:
+            await cleanup_graph(deps)
+
+    rows, first = run(body, models=llm(groq))
+
+    assert rows == 2
+    assert first.explanation and first.explanation.status == "ok"
+    assert not first.explanation.cache_hit
+
+
+def test_the_repo_is_marked_public_and_bundled_entries_are_flagged(exploit_data: None) -> None:
+    lock = json.loads(PACKAGE_LOCK)
+    lock["packages"]["node_modules/lodash"]["inBundle"] = True
+
+    async def body(deps: ScanDeps) -> tuple[list[FindingOut], bool | None]:
+        await setup_user(deps)
+        scan_id = await scan(deps)
+        try:
+            _, findings = await results(deps, scan_id)
+            async with deps.sessions() as session:
+                scan_row = await session.get_one(Scan, scan_id)
+                repo = await session.get_one(Repo, scan_row.repo_id)
+            return findings, repo.is_private
+        finally:
+            await cleanup_graph(deps)
+
+    findings, private = run(body, files={"package-lock.json": json.dumps(lock).encode()})
+
+    assert private is False
+    assert by_advisory(findings)["GHSA-jf85-cpcp-j695"].is_bundled is True
+    assert by_advisory(findings)["GHSA-c6rp-wrp9-qr4q"].is_bundled is False

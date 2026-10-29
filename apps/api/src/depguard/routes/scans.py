@@ -7,24 +7,25 @@ exists (phase 6); the pipeline and queries stay the same.
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Annotated, cast
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.dialects.postgresql import distinct_on
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from depguard.advisories.osv import make_client as make_osv_client
+from depguard.agent.explain import retry_explanation
+from depguard.agent.llm import make_llm
 from depguard.config import Settings
-from depguard.db.models import Finding, FindingScore, Repo, Scan, Service, SkippedPackage
+from depguard.db.models import Finding, Repo, Scan, SkippedPackage
 from depguard.db.postgres import get_session
 from depguard.github.cache import ByteCache
 from depguard.github.client import make_client as make_github_client
 from depguard.routes.dev import DEV_USER_ID, RepoRequest, ensure_dev_profile, require_dev_endpoints
 from depguard.scan.pipeline import ScanAlreadyRunning, ScanDeps, run_scan, start_scan
-from depguard.scoring.score import Subgroup, Tier, sort_key
+from depguard.scoring import ranking
+from depguard.scoring.score import Subgroup, Tier
 
 router = APIRouter(prefix="/v1/dev", dependencies=[Depends(require_dev_endpoints)])
 
@@ -64,6 +65,16 @@ class ScoreBreakdown(BaseModel):
     data_date: date | None
 
 
+class ExplanationOut(BaseModel):
+    # "unavailable": no LLM allowed or reachable, or the fact check failed twice; show the summary.
+    status: Literal["ok", "unavailable"]
+    text: str | None
+    fact_check_passed: bool
+    model: str | None
+    cache_hit: bool
+    created_at: datetime
+
+
 class FindingOut(BaseModel):
     id: uuid.UUID
     lockfile_path: str
@@ -74,6 +85,7 @@ class FindingOut(BaseModel):
     major_bump: bool
     is_dev: bool
     is_direct: bool
+    is_bundled: bool
     advisory_id: str
     aliases: list[str]
     summary: str | None
@@ -82,6 +94,7 @@ class FindingOut(BaseModel):
     subgroup: Subgroup | None
     risk_score: float
     breakdown: ScoreBreakdown
+    explanation: ExplanationOut | None  # None: not explained (not in the top 5, or still running)
 
 
 def get_scan_deps(
@@ -97,6 +110,7 @@ def get_scan_deps(
         github_client=lambda: make_github_client(settings.github_read_token),
         osv_client=make_osv_client,
         cache=_cache,
+        llm=make_llm(settings),
     )
 
 
@@ -146,6 +160,28 @@ async def get_findings(
     return await ranked_findings(session, DEV_USER_ID, scan_id, tier)
 
 
+@router.post("/findings/{finding_id}/explanation", status_code=202)
+async def retry_finding_explanation(
+    finding_id: uuid.UUID,
+    background: BackgroundTasks,
+    session: Session,
+    deps: Annotated[ScanDeps, Depends(get_scan_deps)],
+) -> None:
+    """A new attempt that skips the cache; the result shows up in the findings list."""
+    owned = await session.scalar(
+        select(Finding.id)
+        .join(Scan, Scan.id == Finding.scan_id)
+        .join(Repo, Repo.id == Scan.repo_id)
+        .where(Finding.id == finding_id, Repo.user_id == DEV_USER_ID)
+    )
+    if owned is None:
+        raise HTTPException(status_code=404, detail="finding not found")
+    seconds = deps.settings.explanation_deadline_seconds
+    background.add_task(
+        retry_explanation, deps.sessions, deps.driver, deps.llm, seconds, finding_id
+    )
+
+
 async def scan_status(session: AsyncSession, user_id: uuid.UUID, scan_id: uuid.UUID) -> ScanStatus:
     scan, repo = await owned_scan(session, user_id, scan_id)
     findings = await session.scalar(select(func.count()).where(Finding.scan_id == scan_id))
@@ -174,43 +210,19 @@ async def scan_status(session: AsyncSession, user_id: uuid.UUID, scan_id: uuid.U
 async def ranked_findings(
     session: AsyncSession, user_id: uuid.UUID, scan_id: uuid.UUID, tier: Tier | None = None
 ) -> list[FindingOut]:
-    """Ranked findings: tier, subgroup, risk score, then advisory ID and package (ADR-0003)."""
     await owned_scan(session, user_id, scan_id)
-    # Each finding's current score is its newest finding_scores row.
-    newest = (
-        select(FindingScore)
-        .where(FindingScore.finding_id.in_(select(Finding.id).where(Finding.scan_id == scan_id)))
-        .ext(distinct_on(FindingScore.finding_id))
-        .order_by(FindingScore.finding_id, FindingScore.created_at.desc())
-        .subquery()
-    )
-    score = aliased(FindingScore, newest)
-    query = (
-        select(Finding, score, Service.lockfile_path)
-        .join(score, score.finding_id == Finding.id)
-        .join(Service, Service.id == Finding.service_id)
-        .where(Finding.scan_id == scan_id)
-    )
-    if tier is not None:
-        query = query.where(score.tier == tier)
-    rows = (await session.execute(query)).all()
-    ranked = sorted(
-        rows,
-        key=lambda row: sort_key(
-            row[1].tier, row[1].subgroup, row[1].risk_score, row[0].advisory_id, row[0].package
-        ),
-    )
-    return [to_out(finding, latest, path) for finding, latest, path in ranked]
+    return [to_out(row) for row in await ranking.ranked_findings(session, scan_id, tier)]
 
 
 def number(value: Decimal | None) -> float | None:
     return float(value) if value is not None else None
 
 
-def to_out(finding: Finding, score: FindingScore, lockfile_path: str) -> FindingOut:
+def to_out(row: ranking.RankedFinding) -> FindingOut:
+    finding, score, explanation = row.finding, row.score, row.explanation
     return FindingOut(
         id=finding.id,
-        lockfile_path=lockfile_path,
+        lockfile_path=row.lockfile_path,
         ecosystem=finding.ecosystem,
         package=finding.package,
         installed_version=finding.installed_version,
@@ -218,6 +230,7 @@ def to_out(finding: Finding, score: FindingScore, lockfile_path: str) -> Finding
         major_bump=finding.major_bump,
         is_dev=finding.is_dev,
         is_direct=finding.is_direct,
+        is_bundled=finding.is_bundled,
         advisory_id=finding.advisory_id,
         aliases=finding.aliases,
         summary=finding.summary,
@@ -235,4 +248,14 @@ def to_out(finding: Finding, score: FindingScore, lockfile_path: str) -> Finding
             reach_complete=score.reach_complete,
             data_date=score.data_date,
         ),
+        explanation=ExplanationOut(
+            status=cast(Literal["ok", "unavailable"], explanation.status),
+            text=explanation.text,
+            fact_check_passed=explanation.fact_check_passed,
+            model=explanation.model,
+            cache_hit=explanation.cache_hit,
+            created_at=explanation.created_at,
+        )
+        if explanation is not None
+        else None,
     )

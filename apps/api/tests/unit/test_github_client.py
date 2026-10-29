@@ -13,7 +13,9 @@ def test_reads_commit_tree_and_blob() -> None:
     async def go() -> tuple[str, list[str], bytes]:
         async with github.client() as client:
             reader = github.reader(client)
-            sha = await reader.latest_commit("o", "r")
+            head = await reader.latest_commit("o", "r")
+            assert head.private is False
+            sha = head.commit_sha
             tree = await reader.tree("o", "r", sha)
             lock = next(f for f in tree.files if f.path == "package-lock.json")
             return sha, [f.path for f in tree.files], await reader.blob("o", "r", lock.sha)

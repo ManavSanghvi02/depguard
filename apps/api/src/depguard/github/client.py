@@ -22,6 +22,12 @@ class RepoNotFoundError(GitHubError):
 
 
 @dataclass(frozen=True)
+class Head:
+    commit_sha: str
+    private: bool
+
+
+@dataclass(frozen=True)
 class TreeFile:
     path: str
     sha: str
@@ -65,8 +71,8 @@ class GitHubReader:
             raise GitHubError(f"GitHub returned {response.status_code} for {path}")
         return response.content
 
-    async def latest_commit(self, owner: str, repo: str) -> str:
-        """SHA of the newest commit on the default branch. Only public repos are allowed."""
+    async def latest_commit(self, owner: str, repo: str) -> Head:
+        """The newest commit on the default branch. Only public repos are allowed."""
         info = json.loads(await self._get(f"/repos/{owner}/{repo}"))
         if info.get("private"):
             raise RepoNotFoundError("repository not found or not public")
@@ -74,7 +80,8 @@ class GitHubReader:
         sha = await self._get(
             f"/repos/{owner}/{repo}/commits/{branch}", accept="application/vnd.github.sha"
         )
-        return sha.decode().strip()
+        # Stored so the LLM fallback can check it (ADR-0013); a missing field counts as private.
+        return Head(commit_sha=sha.decode().strip(), private=info.get("private") is not False)
 
     async def tree(self, owner: str, repo: str, commit_sha: str) -> Tree:
         key = f"tree:{commit_sha}"
