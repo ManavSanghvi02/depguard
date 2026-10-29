@@ -92,7 +92,7 @@ GitHub App private key lives only in that workflow's protected environment, **no
 | **Fix planner** (`fixes/`) | API | Decides *what* to change (direct bump, parent bump, override), pre-checks repo ownership, creates the `fixes` row, dispatches the workflow. Never touches the App key. |
 | **fix-lock workflow** | GitHub Actions | `regenerate` job (untrusted, no secrets) → artifact → `publish` job (trusted): diff check, PR or patch, status to the database. |
 | **MCP server** (`mcp_server.py`) | Mounted in the API at `/mcp` | 3 read-only tools; per-user API token; returns only the token owner's data. |
-| **Daily refresh** (`jobs/daily_refresh.py`) | GitHub Actions | Download KEV and EPSS, rescore, keep both databases awake. Uses the restricted `depguard_refresh` role. |
+| **Daily refresh** (`jobs/daily_refresh.py`) | GitHub Actions (locally `make refresh` until deploy) | Download KEV and EPSS, rescore, keep both databases awake. Uses the restricted `depguard_refresh` role. |
 
 ---
 
@@ -159,7 +159,8 @@ sequenceDiagram
    reason is "dependency paths unavailable: graph database unreachable". Graphs of the repo's services that
    are gone or failed in this scan are deleted, so no stale paths remain.
 8. **Score.** Look up KEV and EPSS by the finding's CVE alias. **Reach** = number of the user's services whose
-   latest scan contains the same package version and advisory. Compute tier, subgroup, risk score and tie-breaker
+   repo's latest *fully checked* scan contains the same package version and advisory (a repo with no fully
+   checked scan counts its partial one, and reach is marked incomplete; ADR-0003). Compute tier, subgroup, risk score and tie-breaker
    ([ADR-0003](adr/0003-risk-tiers-and-stored-scores.md)), then write `findings` and
    `finding_scores(data_date)`.
 9. **Finish.** `status=done`, or **`partial`** with `partial_reasons`. The UI shows a banner such as
@@ -173,9 +174,12 @@ sequenceDiagram
 with a message. On API startup, scans stuck in `running` are set to `failed` ("server restarted").
 
 ### 3.1 Daily refresh ([ADR-0009](adr/0009-daily-refresh-on-github-actions.md))
-Runs at 03:00 UTC on a schedule, and on demand through the manual "run now" trigger.
+Runs at 03:00 UTC on a schedule, and on demand through the manual "run now" trigger. Until the deploy phase the
+databases are local, so it runs as `make refresh`; `daily-refresh.yml` exists with the manual trigger only, and the
+schedule, its secret and the Neo4j write are added at deploy.
 1. Download the KEV catalog (JSON) and the EPSS scores (compressed CSV).
-2. Replace `kev_entries` and `epss_scores` in one transaction (latest snapshot only).
+2. Check each file looks complete (a cut-off download aborts and leaves the tables alone), round EPSS and its
+   percentile to 3 decimals, and replace `kev_entries` and `epss_scores` in one transaction (latest snapshot only).
 3. Rescore every service's latest scan; insert a `finding_scores` row only when an input changed.
 4. Insert a `refresh_runs` row (keeps Supabase active) and `MERGE (:SystemStatus {last_refreshed})` in Neo4j
    (keeps Aura active).
@@ -259,7 +263,8 @@ Every row was decided with two options compared; the reasoning is in the ADR.
 
 Smaller choices made here without an ADR:
 - **Database access:** SQLAlchemy 2.0 + Alembic migrations (rather than the Supabase client or raw SQL),
-  because it gives a versioned schema and tests against a local Postgres in Docker.
+  because it gives a versioned schema and tests against a local Postgres in Docker. One driver, asyncpg, for the
+  API, migrations and the refresh (psycopg's async mode doesn't run on Windows' default event loop).
 - **Repo layout:** one repository with `apps/api` and `apps/web` (rather than two repos), so one phase = one PR.
 
 ---
@@ -271,7 +276,7 @@ Smaller choices made here without an ADR:
 ```mermaid
 flowchart LR
   S[":Service<br/>id, repo_id, lockfile_path,<br/>ecosystem, lockfile_type"]
-  D1[":Dep<br/>service_id, key, ecosystem,<br/>name, version, dev, direct"]
+  D1[":Dep<br/>service_id, key, ecosystem, name,<br/>version, norm_version, dev, direct"]
   D2[":Dep"]
   D3[":Dep"]
   SS[":SystemStatus<br/>last_refreshed"]
@@ -298,7 +303,7 @@ flowchart LR
 ```cypher
 CREATE CONSTRAINT service_id  FOR (s:Service) REQUIRE s.id IS UNIQUE;
 CREATE CONSTRAINT dep_key     FOR (d:Dep)     REQUIRE (d.service_id, d.key) IS UNIQUE;
-CREATE INDEX      dep_package FOR (d:Dep)     ON (d.ecosystem, d.name, d.version);
+CREATE INDEX      dep_package_norm FOR (d:Dep) ON (d.ecosystem, d.name, d.norm_version);
 CREATE INDEX      dep_service  FOR (d:Dep)     ON (d.service_id);  // a service's whole tree
 CREATE INDEX      service_repo FOR (s:Service) ON (s.repo_id);     // finding a repo's stale services
 ```
@@ -310,13 +315,14 @@ MATCH (s:Service {id: $service_id}), (d:Dep {service_id: $service_id, key: $dep_
 MATCH p = allShortestPaths((s)-[:DEPENDS_ON*]->(d))
 RETURN p LIMIT 3;
 
-// Which of the user's services contain package X (uses dep_package index)
-MATCH (d:Dep {ecosystem: $eco, name: $name, version: $version})
+// Which of the user's services contain package X (uses dep_package_norm)
+MATCH (d:Dep {ecosystem: $eco, name: $name, norm_version: $normalised_version})
 WHERE d.service_id IN $user_service_ids
 RETURN DISTINCT d.service_id;
 ```
 `$user_service_ids` always comes from Postgres for the signed-in user, so a graph query can't return another
-user's services.
+user's services. `norm_version` is the version in one spelling per ecosystem (`versions/`: PEP 440 via
+`packaging`, SemVer via `semver`), so `1.0` finds `1.0.0`; `version` keeps the lockfile's spelling for display.
 
 **Capacity:** the formula and current numbers are in [spec §8.1](spec.md#graph-capacity-neo4j-auradb-free).
 In short, relationships (N × d per service) run out first unless `d` is about 2 or lower. The graph keeps only each service's latest
@@ -345,16 +351,16 @@ erDiagram
 | `api_tokens` | `id`, `user_id`, `prefix`, `token_hash`, `name`, `last_used_at`, `revoked_at` | Raw token shown once; only the SHA-256 hash is stored |
 | `repos` | `id`, `user_id`, `owner`, `name`, `default_branch` | Unique (`user_id`, `owner`, `name`); max 10 per user. App installations aren't stored; they're looked up live |
 | `services` | `id`, `repo_id`, `lockfile_path`, `ecosystem`, `lockfile_type` | One per lockfile |
-| `scans` | `id`, `repo_id`, `status`, `partial_reasons` (jsonb), `commit_sha`, `data_date`, `started_at`, `finished_at`, `duration_ms`, `error` | Status: queued / running / done / partial / failed |
+| `scans` | `id`, `repo_id`, `status`, `partial_reasons` (jsonb), `commit_sha`, `data_date`, `created_at`, `started_at`, `finished_at`, `duration_ms`, `error`, `osv_complete` | Status: queued / running / done / partial / failed |
 | `skipped_packages` | `scan_id`, `service_id`, `name`, `spec`, `reason` | `version_unknown`, `not_from_registry` or `osv_unavailable` |
-| `advisories` | `id`, `aliases[]`, `summary`, `cvss_score`, `cvss_vector`, `cvss_version`, `is_malicious`, `withdrawn`, `modified`, `raw` (jsonb), `fetched_at` | OSV cache |
+| `advisories` | `id`, `aliases[]`, `summary`, `cvss_score`, `cvss_vector`, `cvss_version`, `is_malicious`, `withdrawn`, `modified`, `raw` (jsonb), `fetched_at` | OSV cache; `raw` is null for an ID whose details couldn't be fetched yet (retried next scan) |
 | `kev_entries` | `cve_id`, `date_added`, `due_date`, `known_ransomware` | Replaced daily |
-| `epss_scores` | `cve_id`, `score`, `percentile`, `data_date` | Latest snapshot only (fits the 500 MB limit) |
-| `findings` | `id`, `scan_id`, `service_id`, `dep_key`, `ecosystem`, `package`, `installed_version`, `advisory_id`, `fixed_version`, `major_bump`, `is_dev`, `is_direct` | One per (entry, merged advisory) |
-| `finding_scores` | `finding_id`, `data_date`, `in_kev`, `epss`, `cvss`, `reach`, `tier`, `subgroup`, `risk_score` | New row only when an input changes |
+| `epss_scores` | `cve_id`, `score`, `percentile`, `data_date` | Latest snapshot only (fits the 500 MB limit); rounded to 3 decimals |
+| `findings` | `id`, `scan_id`, `service_id`, `dep_key`, `ecosystem`, `package`, `installed_version`, `installed_version_norm`, `advisory_id`, `aliases[]`, `summary`, `cvss`, `is_malicious`, `fixed_version`, `major_bump`, `is_dev`, `is_direct` | One per (entry, merged advisory). `advisory_id` = the group's main ID; `aliases` = every ID in the group (CVEs for KEV/EPSS); `cvss` = the group's highest |
+| `finding_scores` | `finding_id`, `data_date`, `in_kev`, `epss`, `epss_percentile`, `cvss`, `reach`, `reach_complete`, `tier`, `subgroup`, `risk_score`, `created_at` | New row only when an input changes; the newest row is the current score |
 | `explanations` | `finding_id`, `data_date`, `text`, `model`, `trace_id`, `fact_check_passed`, `status` | |
 | `fixes` | `id`, `finding_id`, `requested_by_github_id`, `strategy`, `target_version`, `status`, `workflow_run_id`, `pr_url`, `patch`, `error`, `created_at`, `updated_at` | Statuses explained in §3.2 |
-| `refresh_runs` | `id`, `ran_at`, `kev_count`, `epss_count`, `rescored`, `status` | Written by the daily job |
+| `refresh_runs` | `id`, `ran_at`, `status`, `kev_count`, `epss_count`, `epss_date`, `rescored`, `error` | Written by the daily job, also when it fails |
 
 ### 5.3 Database roles and row-level security
 Supabase exposes tables through its Data API, so **row-level security (RLS) is enabled on every table**. With RLS on,
@@ -368,7 +374,7 @@ and proven by cross-user tests ([security.md §7](security.md#7-user-data-isolat
 
 | Role | Used by | Access |
 |---|---|---|
-| `depguard_api` | Render API | Read/write on application tables through policies. Per-user isolation is enforced in API code and tested. |
+| `depguard_api` | Render API | Read/write on application tables through policies; `SELECT` only on `kev_entries`, `epss_scores`, `refresh_runs`. Per-user isolation is enforced in API code and tested. |
 | `depguard_refresh` | Daily job | Full access to `kev_entries`, `epss_scores`; `INSERT, SELECT` on `refresh_runs`; `SELECT` on `findings`, `scans`, `services`, `advisories` and `repos(id, user_id)`; `SELECT, INSERT` on `finding_scores` (it must read the latest score to know whether an input changed); nothing else |
 | `depguard_fixer` | Fix `publish` job | `SELECT` on `fixes`, `findings`, `services(id, repo_id, lockfile_path)` and `repos(id, owner, name)`; `UPDATE` on `fixes` status/result columns only |
 
@@ -376,6 +382,9 @@ and proven by cross-user tests ([security.md §7](security.md#7-user-data-isolat
 - `TRUNCATE` skips row policies, so it is granted only where a full-table replace is the point
   (`kev_entries`, `epss_scores`).
 - The exact SQL lives in the migrations; [security.md](security.md) explains each grant.
+- Row-level security blocks `COPY`, so the refresh loads EPSS with one `INSERT … SELECT FROM unnest(arrays)`.
+- The migration creates the roles without a login; `make migrate` then sets each role's password from its own
+  URL (`DATABASE_URL`, `REFRESH_DATABASE_URL`), so the password exists in one place only.
 
 ---
 
@@ -417,6 +426,7 @@ depguard/
 │  │  ├─ pyproject.toml          # dependencies, managed with uv
 │  │  ├─ Dockerfile              # Render image (no npm/poetry needed: fixes run in Actions)
 │  │  ├─ alembic/                # Postgres migrations, roles, RLS policies
+│  │  ├─ scripts/                # compare_osv_scanner.py (correctness check, spec §7)
 │  │  ├─ src/depguard/
 │  │  │  ├─ main.py              # app setup: routers, /mcp mount, CORS
 │  │  │  ├─ config.py            # settings from environment variables
@@ -425,12 +435,12 @@ depguard/
 │  │  │  ├─ routes/              # one file per resource group
 │  │  │  ├─ db/                  # SQLAlchemy models, sessions, Neo4j driver
 │  │  │  ├─ github/              # read client, repo-owner pre-check, workflow dispatch
-│  │  │  ├─ scan/                # pipeline.py: steps 2–9
+│  │  │  ├─ scan/                # ingest, match, graph, pipeline (steps 2–9)
 │  │  │  ├─ parsers/             # npm_lock, poetry_lock, uv_lock, requirements_txt
 │  │  │  ├─ versions/            # npm semver, PEP 440, fixed version, major bump
-│  │  │  ├─ advisories/          # osv, kev, epss, aliases
+│  │  │  ├─ advisories/          # osv, cache, aliases, cvss, feeds (KEV + EPSS)
 │  │  │  ├─ graph/               # writer, queries, capacity check
-│  │  │  ├─ scoring/             # tiers, score, sort key
+│  │  │  ├─ scoring/             # score (tier, risk score, sort key), rescore
 │  │  │  ├─ agent/               # LangGraph graph, tools, fact checker
 │  │  │  ├─ fixes/               # planner, diff_check, publish (used by the workflow)
 │  │  │  └─ jobs/daily_refresh.py

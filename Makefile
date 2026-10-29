@@ -1,7 +1,7 @@
 # Shortcuts for local development. Recipes stay simple so they run in cmd, PowerShell and CI (Linux).
 API = uv run --directory apps/api
 
-.PHONY: setup dev db-up db-down test lint format
+.PHONY: setup dev db-up db-down migrate refresh compare test lint format
 
 setup:
 	uv sync --directory apps/api
@@ -15,6 +15,20 @@ db-up:
 
 db-down:
 	docker compose down
+
+# Postgres tables, roles and policies; then the role passwords from DATABASE_URL / REFRESH_DATABASE_URL.
+migrate:
+	$(API) alembic upgrade head
+	$(API) python -m depguard.db.set_role_passwords
+
+# Daily KEV/EPSS refresh and rescoring, as the depguard_refresh role.
+refresh:
+	$(API) python -m depguard.jobs.daily_refresh
+
+# Our findings vs OSV-Scanner on the same lockfiles (needs osv-scanner installed).
+# Default: the fixture lockfiles. Example: make compare ARGS="--repo snyk-labs/nodejs-goof"
+compare:
+	$(API) python scripts/compare_osv_scanner.py $(ARGS)
 
 test:
 	$(API) pytest

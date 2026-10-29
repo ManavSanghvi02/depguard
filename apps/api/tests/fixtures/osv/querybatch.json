@@ -1,0 +1,187 @@
+{
+ "queries": [
+  {
+   "package": {
+    "ecosystem": "npm",
+    "name": "lodash"
+   },
+   "version": "4.17.4"
+  },
+  {
+   "package": {
+    "ecosystem": "npm",
+    "name": "dustjs-linkedin"
+   },
+   "version": "2.5.0"
+  },
+  {
+   "package": {
+    "ecosystem": "npm",
+    "name": "express-fileupload"
+   },
+   "version": "0.0.5"
+  },
+  {
+   "package": {
+    "ecosystem": "PyPI",
+    "name": "jinja2"
+   },
+   "version": "2.10"
+  },
+  {
+   "package": {
+    "ecosystem": "npm",
+    "name": "flatmap-stream"
+   },
+   "version": "0.1.1"
+  },
+  {
+   "package": {
+    "ecosystem": "npm",
+    "name": "ms"
+   },
+   "version": "2.1.3"
+  }
+ ],
+ "response": {
+  "results": [
+   {
+    "vulns": [
+     {
+      "id": "GHSA-29mw-wpgm-hmr9",
+      "modified": "2025-09-29T21:12:31.102523Z"
+     },
+     {
+      "id": "GHSA-35jh-r3h4-6jhm",
+      "modified": "2026-10-17T02:55:38.085813Z"
+     },
+     {
+      "id": "GHSA-4xc9-xhrj-v574",
+      "modified": "2025-08-12T21:55:35.778975Z"
+     },
+     {
+      "id": "GHSA-f23m-r3pf-42rh",
+      "modified": "2026-10-17T02:56:13.084362Z"
+     },
+     {
+      "id": "GHSA-fvqr-27wr-82fm",
+      "modified": "2025-08-12T21:55:16.003066Z"
+     },
+     {
+      "id": "GHSA-jf85-cpcp-j695",
+      "modified": "2026-09-10T03:47:55.238868Z"
+     },
+     {
+      "id": "GHSA-p6mc-m468-83gw",
+      "modified": "2025-08-12T21:56:17.174859Z"
+     },
+     {
+      "id": "GHSA-r5fr-rjxr-66jc",
+      "modified": "2026-10-17T02:56:15.633068Z"
+     },
+     {
+      "id": "GHSA-x5rq-j2xg-h7qm",
+      "modified": "2026-09-10T03:48:25.206281Z"
+     },
+     {
+      "id": "GHSA-xxjr-mmjv-4gpg",
+      "modified": "2026-10-17T02:55:54.229635Z"
+     }
+    ]
+   },
+   {
+    "vulns": [
+     {
+      "id": "GHSA-c6rp-wrp9-qr4q",
+      "modified": "2023-11-08T04:07:07.132931Z"
+     }
+    ]
+   },
+   {
+    "vulns": [
+     {
+      "id": "GHSA-9wcg-jrwf-8gg7",
+      "modified": "2026-07-08T06:49:33.356280Z"
+     },
+     {
+      "id": "GHSA-q3w9-g74q-vp5f",
+      "modified": "2020-08-31T18:51:13Z"
+     },
+     {
+      "id": "GHSA-w4m6-x6c2-j5c9",
+      "modified": "2023-11-08T04:08:58.051087Z"
+     }
+    ]
+   },
+   {
+    "vulns": [
+     {
+      "id": "GHSA-462w-v97r-4m45",
+      "modified": "2024-09-24T21:03:59.802687Z"
+     },
+     {
+      "id": "GHSA-cpwx-vrp4-4pq7",
+      "modified": "2026-09-10T03:49:48.526758Z"
+     },
+     {
+      "id": "GHSA-g3rq-g295-4j3m",
+      "modified": "2025-02-14T05:26:14.565160Z"
+     },
+     {
+      "id": "GHSA-h5c8-rqwp-cp95",
+      "modified": "2026-09-10T03:50:00.236017Z"
+     },
+     {
+      "id": "GHSA-h75v-3vvj-5mfj",
+      "modified": "2026-09-10T03:50:13.786450Z"
+     },
+     {
+      "id": "GHSA-q2x7-8rv6-6q7h",
+      "modified": "2026-09-10T03:50:21.662855Z"
+     },
+     {
+      "id": "PYSEC-2019-217",
+      "modified": "2023-11-08T04:00:58.644982Z"
+     },
+     {
+      "id": "PYSEC-2021-66",
+      "modified": "2023-11-08T04:03:28.543308Z"
+     },
+     {
+      "id": "PYSEC-2026-1471",
+      "modified": "2026-07-07T17:46:43.358335Z"
+     },
+     {
+      "id": "PYSEC-2026-1473",
+      "modified": "2026-07-07T17:46:13.853151Z"
+     },
+     {
+      "id": "PYSEC-2026-1474",
+      "modified": "2026-07-07T17:46:13.832160Z"
+     },
+     {
+      "id": "PYSEC-2026-1475",
+      "modified": "2026-07-07T17:46:13.842466Z"
+     }
+    ]
+   },
+   {
+    "vulns": [
+     {
+      "id": "GHSA-9x64-5r7x-2q53",
+      "modified": "2021-10-01T13:30:04Z"
+     },
+     {
+      "id": "GHSA-mh6f-8j2x-4483",
+      "modified": "2021-09-15T20:08:26Z"
+     },
+     {
+      "id": "MAL-2025-20690",
+      "modified": "2025-08-14T18:52:04Z"
+     }
+    ]
+   },
+   {}
+  ]
+ }
+}

@@ -12,7 +12,7 @@ changes, a new ADR replaces the old one, and the old one is marked *Superseded*.
 |---|---|---|
 | [0001](0001-github-app-over-oauth-repo-scope.md) | GitHub App with narrow permissions for writes, not the OAuth `repo` scope | Accepted |
 | [0002](0002-lockfiles-only-no-version-guessing.md) | Read lockfiles only; never guess versions | Accepted |
-| [0003](0003-risk-tiers-and-stored-scores.md) | Deterministic tiers and scoring, not LLM scoring; scores stored daily | Accepted (score weights: Proposed) |
+| [0003](0003-risk-tiers-and-stored-scores.md) | Deterministic tiers and scoring, not LLM scoring; scores stored daily | Accepted |
 | [0004](0004-vulnerability-data-sources.md) | OSV `querybatch` + KEV/EPSS bulk files; `partial` scans on failure | Accepted |
 | [0005](0005-postgres-and-neo4j-split.md) | Postgres for records, Neo4j for the dependency graph | Accepted |
 | [0006](0006-per-service-graph-nodes.md) | Separate graph nodes per service | Accepted |

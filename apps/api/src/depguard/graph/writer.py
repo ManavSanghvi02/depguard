@@ -8,6 +8,7 @@ from neo4j import AsyncDriver, AsyncManagedTransaction
 from depguard.graph.capacity import GraphSize, graph_size, has_room, service_size
 from depguard.graph.schema import ensure_schema
 from depguard.parsers.models import ParsedService
+from depguard.versions import normalize
 
 BATCH_SIZE = 1_000  # rows per UNWIND, so no single query carries a 5,000-entry list
 
@@ -58,13 +59,17 @@ async def replace_service(
     )
     await tx.run("MATCH (d:Dep {service_id: $id}) DETACH DELETE d", id=service_id)
 
-    entries = [entry.model_dump() for entry in service.entries]
+    entries = [
+        {**entry.model_dump(), "norm_version": normalize(service.ecosystem, entry.version)}
+        for entry in service.entries
+    ]
     for rows in batches(entries):
         await tx.run(
             """
             UNWIND $rows AS row
             CREATE (:Dep {service_id: $id, key: row.key, ecosystem: $ecosystem, name: row.name,
-                          version: row.version, dev: row.dev, direct: row.direct})
+                          version: row.version, norm_version: row.norm_version, dev: row.dev,
+                          direct: row.direct})
             """,
             rows=rows,
             id=service_id,

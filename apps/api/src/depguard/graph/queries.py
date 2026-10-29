@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from depguard.parsers.common import sorted_edges
 from depguard.parsers.models import Ecosystem, Edge, Entry
 from depguard.parsers.names import normalize_pypi_name
+from depguard.versions import normalize
 
 
 class ServiceTree(BaseModel):
@@ -104,19 +105,20 @@ async def shortest_paths(
 async def services_containing(
     driver: AsyncDriver, ecosystem: Ecosystem, name: str, version: str, service_ids: list[str]
 ) -> list[str]:
-    """Which of these services hold this exact package version (uses the dep_package index)."""
+    """Which of these services hold this package version (uses the dep_package_norm index).
+    Versions are compared normalised, so 1.0 and 1.0.0 are the same PyPI version."""
     if ecosystem == "PyPI":
         name = normalize_pypi_name(name)  # stored names are PEP 503; npm names are exact
     records, _, _ = await driver.execute_query(
         """
-        MATCH (d:Dep {ecosystem: $ecosystem, name: $name, version: $version})
+        MATCH (d:Dep {ecosystem: $ecosystem, name: $name, norm_version: $version})
         WHERE d.service_id IN $ids
         RETURN DISTINCT d.service_id AS id
         ORDER BY id
         """,
         ecosystem=ecosystem,
         name=name,
-        version=version,
+        version=normalize(ecosystem, version),
         ids=service_ids,
     )
     return [record["id"] for record in records]

@@ -50,6 +50,7 @@ them?* Sections 1–3 are the threat model; sections 4–12 give the details beh
 | **GitHub App private key** | Actions, protected **`fix-pr`** environment **only** | Push branches / open PRs where the App is installed | Generate a new key in the App settings, delete the old one, update the environment secret |
 | GitHub read token | Render | Read public repos (5,000 req/h) | Revoke and replace (read-only) |
 | Workflow dispatch token (fine-grained) | Render | Actions read/write on the **DepGuard repo only** | Revoke; started workflows still face the artifact checks, the diff checker and the live ownership check |
+| Supabase owner (`postgres`) password | Only where migrations are run (the developer's `.env`) | Everything, incl. roles and policies | Reset in Supabase; never stored on Render or in Actions |
 | Supabase `depguard_api` password | Render | Application tables, through policies | Change the role password |
 | Supabase `depguard_refresh` password | Actions `daily-refresh` environment | KEV/EPSS + narrow rescoring access (§6) | Change the role password |
 | Supabase `depguard_fixer` password | Actions `fix-pr` environment | Read fix plans; update fix status (§6) | Change the role password |
@@ -60,7 +61,7 @@ them?* Sections 1–3 are the threat model; sections 4–12 give the details beh
 **The `regenerate` job has no secrets at all**, because it runs untrusted code.
 
 **Environment variable names** (placeholders go in `.env.example`, created in the first code phase):
-`DATABASE_URL`, `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `SUPABASE_URL`, `SUPABASE_JWKS_URL`,
+`DATABASE_URL` (depguard_api), `REFRESH_DATABASE_URL` (depguard_refresh), `MIGRATION_DATABASE_URL` (owner; migrations only), `NEO4J_URI`, `NEO4J_USER`, `NEO4J_PASSWORD`, `SUPABASE_URL`, `SUPABASE_JWKS_URL`,
 `GITHUB_READ_TOKEN`, `GITHUB_DISPATCH_TOKEN`, `GITHUB_APP_ID`, `LLM_API_KEY`,
 `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `WEB_ORIGIN`. The App private key isn't on this list: the API never needs it.
 
@@ -109,12 +110,14 @@ the old value works until revoked. (2) Check the provider's logs for misuse. (3)
 
 | Role | Grants | Policies |
 |---|---|---|
-| `depguard_api` | Read/write on application tables | One per table for this role; per-user isolation enforced in API code + tests (§7) |
+| `depguard_api` | Read/write on application tables; `SELECT` only on `kev_entries`, `epss_scores`, `refresh_runs` | One per table for this role; per-user isolation enforced in API code + tests (§7) |
 | `depguard_refresh` | All on `kev_entries`, `epss_scores` (incl. `TRUNCATE`); `INSERT, SELECT` on `refresh_runs`; `SELECT` on `findings`, `scans`, `services`, `advisories`; `SELECT (id, user_id)` on `repos`; `SELECT, INSERT` on `finding_scores` (reads the latest score to see whether an input changed) | One per granted table and action |
 | `depguard_fixer` | `SELECT` on `fixes`, `findings`; `SELECT (id, repo_id, lockfile_path)` on `services`; `SELECT (id, owner, name)` on `repos`; `UPDATE (status, workflow_run_id, pr_url, patch, error, updated_at)` on `fixes` | One per granted table and action |
 
 `depguard_refresh` and `depguard_fixer` have **no access** to `profiles`, `api_tokens` or `explanations`. The exact
-SQL lives in the Alembic migrations.
+SQL lives in the Alembic migrations, and `tests/integration/test_postgres_roles.py` checks each grant and refusal.
+The roles are created without a login; `make migrate` sets each password from its own URL, so a password lives in
+one place only. Locally the roles get random passwords in `.env`.
 
 ### Neo4j
 Aura Free offers one full-access user, so access can't be split per job. Mitigations: the credential is stored

@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     max_lockfile_bytes: int = 10_000_000
     max_entries_per_service: int = 5_000
 
+    # One URL per role (architecture §5.3). DATABASE_URL is the API's depguard_api role.
+    database_url: str = ""
+    refresh_database_url: str = ""  # the daily refresh (depguard_refresh)
+    migration_database_url: str = ""  # the table owner; only for migrations and role setup
+
     neo4j_uri: str = "bolt://localhost:7687"
     neo4j_user: str = "neo4j"
     neo4j_password: str = ""

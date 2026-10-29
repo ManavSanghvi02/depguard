@@ -307,7 +307,7 @@ A scheduled GitHub Actions workflow, with a manual "run now" trigger, that:
 
 ### 8.7 Benchmark repos
 Real public repos used for the OSV-Scanner comparison and the noise-reduction metric (§7). Each is pinned to a
-commit SHA when the comparison script is built (phase 4b). Checked through the GitHub API on 2026-10-28.
+commit SHA when the comparison is run on the whole set (phase 4b; the script itself is built in phase 3). Checked through the GitHub API on 2026-10-28.
 
 | Repo | Lockfiles | Why it's in the set |
 |---|---|---|
@@ -331,9 +331,9 @@ One phase = one branch = one pull request.
 | 0b | Skeleton: API app, local databases, CI |
 | 1 | Ingestion: fetch lockfiles from GitHub, parsers |
 | 2 | Graph: Neo4j dependency graph, paths, capacity check |
-| 3 | Vulnerabilities and scoring: OSV matching, versions, KEV/EPSS, tiers |
+| 3 | Vulnerabilities and scoring: OSV matching, versions, KEV/EPSS, tiers, OSV-Scanner comparison script |
 | 4a | Agent: explanations of the top 5, fact checker |
-| 4b | Evals: agent evaluation set, OSV-Scanner comparison on the benchmark repos |
+| 4b | Evals: agent evaluation set, OSV-Scanner comparison run on all benchmark repos with the documented list of differences |
 | 5 | Fix PRs and MCP server |
 | 6 | Web app and auth |
 | 7 | Deploy |
@@ -343,7 +343,7 @@ One phase = one branch = one pull request.
 ## 9. Open questions
 Answered during Phase 0:
 - Risk score within tiers, missing CVSS, CVSS version → [ADR-0003](adr/0003-risk-tiers-and-stored-scores.md)
-  (weights still *Proposed*).
+  (weights decided in phase 3: EPSS percentile 0.5, CVSS 0.3, reach 0.2).
 - Fixing a vulnerable **transitive** dependency → [ADR-0010](adr/0010-fix-prs-built-in-github-actions.md)
   (parent bump first, then overrides).
 - How LangGraph structures the agent → [ADR-0013](adr/0013-explanation-agent-and-llm.md).

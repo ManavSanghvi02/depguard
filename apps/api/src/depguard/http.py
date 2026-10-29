@@ -1,4 +1,4 @@
-"""HTTP requests with timeouts and retries, shared by the GitHub client (and OSV later)."""
+"""HTTP requests with timeouts and retries, shared by the GitHub, OSV and KEV/EPSS clients."""
 
 import asyncio
 import random
@@ -49,6 +49,7 @@ async def request_with_retries(
     *,
     sleep: Sleep = asyncio.sleep,
     now: Callable[[], float] = time.time,
+    timeout: float = TIMEOUT_SECONDS,
     **kwargs: Any,
 ) -> httpx.Response:
     """Send a request, retrying network errors, 5xx, 429 and short rate limits.
@@ -59,7 +60,7 @@ async def request_with_retries(
     for attempt in range(RETRIES + 1):
         last_attempt = attempt == RETRIES
         try:
-            response = await client.request(method, url, timeout=TIMEOUT_SECONDS, **kwargs)
+            response = await client.request(method, url, timeout=timeout, **kwargs)
         except httpx.TransportError:  # connection errors and timeouts
             if last_attempt:
                 raise

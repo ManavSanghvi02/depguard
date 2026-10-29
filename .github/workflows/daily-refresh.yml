@@ -1,0 +1,42 @@
+# Daily KEV/EPSS refresh and rescoring (ADR-0009, architecture §3.1).
+#
+# Not active yet: until the deploy phase the databases are local, so this workflow has no
+# schedule, and its environment and secret don't exist. The deploy phase adds:
+#   - `schedule: - cron: "0 3 * * *"` under `on:`
+#   - the protected `daily-refresh` environment (main branch only) with the secret
+#     REFRESH_DATABASE_URL (the Supabase depguard_refresh role), plus the Neo4j keep-alive.
+# Until then, run the same job locally with `make refresh`.
+name: Daily refresh
+
+on:
+  workflow_dispatch: # the manual "run now" trigger, also the recovery path after 60 idle days
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: daily-refresh
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          version: "0.13.6"
+          enable-cache: false
+      - name: Install dependencies
+        run: uv sync --locked --no-dev
+      - name: Refresh KEV and EPSS, rescore
+        env:
+          REFRESH_DATABASE_URL: ${{ secrets.REFRESH_DATABASE_URL }}
+        run: uv run python -m depguard.jobs.daily_refresh

@@ -1,4 +1,12 @@
-from depguard.parsers.poetry_constraints import Constraint, Locked, constraints, pick_versions
+import pytest
+
+from depguard.parsers.poetry_constraints import (
+    Constraint,
+    Locked,
+    allows,
+    constraints,
+    pick_versions,
+)
 
 OLD = Locked(key="lib==1.0", version="1.0", python_versions=">=3.8")
 NEW = Locked(key="lib==2.0", version="2.0", python_versions=">=3.10")
@@ -52,7 +60,31 @@ def test_nothing_matching_keeps_every_candidate_as_ambiguous() -> None:
 
 
 def test_unparseable_constraint_does_not_narrow() -> None:
-    assert pick_versions("^1.0", [OLD, NEW]) == {"lib==1.0": True, "lib==2.0": True}
+    assert pick_versions("not a constraint!", [OLD, NEW]) == {"lib==1.0": True, "lib==2.0": True}
+
+
+@pytest.mark.parametrize(
+    ("spec", "version", "allowed"),
+    [
+        ("^1.2", "1.9.0", True),
+        ("^1.2", "2.0", False),
+        ("^0.2.3", "0.3.0", False),  # caret below 1.0 stops at the next minor
+        ("~1.2", "1.2.9", True),
+        ("~1.2", "1.3", False),
+        ("~=1.2", "1.9", True),
+        (">=1.0,<2.0", "1.5", True),
+        (">=2.7,!=3.0.*,!=3.1.*", "3.1", False),
+        ("^3.8 || ^2.7", "2.7.18", True),
+        ("1.0", "1.0.0", True),  # bare version = exact pin
+        (">=1.0", "2.0b1", True),  # prereleases count: the lock may hold one
+    ],
+)
+def test_poetry_constraint_syntax(spec: str, version: str, allowed: bool) -> None:
+    assert allows(spec, version) is allowed
+
+
+def test_caret_constraint_now_narrows() -> None:
+    assert pick_versions("^1.0", [OLD, NEW]) == {"lib==1.0": False}
 
 
 def test_single_candidate_is_never_ambiguous() -> None:
